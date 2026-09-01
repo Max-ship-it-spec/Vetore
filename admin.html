@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vetcore — Panel Admin</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="vc-logo" id="logoBox"></div>
+      <div class="sidebar-tag">Panel de administración</div>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-sec="resumen"><span class="ic">◧</span> Resumen</button>
+      <button class="nav-item" data-sec="cuentas"><span class="ic">🏥</span> Cuentas de clínicas</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="avatarLetter">A</div>
+        <div>
+          <div class="sidebar-user-name" id="userName">Admin</div>
+          <div class="sidebar-user-plan">Administrador</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-block btn-sm" onclick="logout()">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')"><span></span><span></span><span></span></button>
+        <h2 id="pageTitle">Resumen</h2>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- RESUMEN -->
+      <section class="section active" id="sec-resumen">
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-val" id="st-total">—</div><div class="stat-label">Cuentas de clínicas</div></div>
+          <div class="stat-card accent"><div class="stat-val" id="st-activas">—</div><div class="stat-label">Cuentas activas</div></div>
+          <div class="stat-card"><div class="stat-val" id="st-ingresos">—</div><div class="stat-label">Ingreso mensual estimado</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Cuentas por plan</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Plan</th><th>Cuentas activas</th><th>Ingreso mensual</th></tr></thead>
+            <tbody id="tbPorPlan"><tr class="empty-row"><td colspan="3">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- CUENTAS -->
+      <section class="section" id="sec-cuentas">
+        <div class="card">
+          <div class="card-header">
+            <h3>Cuentas de clínicas (clientes de Vetcore)</h3>
+            <button class="btn btn-primary btn-sm" onclick="abrirCrearCuenta()">+ Crear cuenta</button>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Clínica</th><th>Contacto</th><th>Plan</th><th>Estado</th><th>Creada</th><th></th></tr></thead>
+            <tbody id="tbCuentas"><tr class="empty-row"><td colspan="6">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: crear/editar cuenta -->
+<div class="modal-overlay" id="mCuenta">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mCuenta')">✕</button>
+    <h2 id="mCuentaTitulo">Crear cuenta de clínica</h2>
+    <p class="modal-sub">Define los datos de acceso y el plan que va a tener este cliente</p>
+    <input type="hidden" id="cu_id">
+    <div class="form-row">
+      <div class="field"><label>Nombre de la clínica</label><input type="text" id="cu_clinica" placeholder="Ej: Jezreel Vet"></div>
+      <div class="field"><label>Nombre del contacto</label><input type="text" id="cu_nombre" placeholder="Nombre del veterinario/a"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Email de acceso</label><input type="email" id="cu_email" placeholder="clinica@correo.com"></div>
+      <div class="field"><label>Teléfono</label><input type="tel" id="cu_telefono" placeholder="0999999999"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Contraseña</label><input type="text" id="cu_password" placeholder="Contraseña de acceso"></div>
+      <div class="field"><label>Plan</label>
+        <select id="cu_plan"></select>
+      </div>
+    </div>
+    <div class="field" id="cu_activo_wrap" style="display:none;">
+      <label>Estado de la cuenta</label>
+      <select id="cu_activo">
+        <option value="1">Activa</option>
+        <option value="0">Desactivada</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="guardarCuenta()" id="btnGuardarCuenta">Crear cuenta</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/common.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
