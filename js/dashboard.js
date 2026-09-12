@@ -13,7 +13,8 @@ if (user) {
 // ══════════════════════════════════════════════════════════════
 const titles = {
   inicio: 'Inicio', clientes: 'Clientes', pacientes: 'Pacientes', agenda: 'Agenda',
-  historia: 'Historia clínica', ventas: 'Ventas', inventario: 'Inventario'
+  historia: 'Historia clínica', ventas: 'Ventas', inventario: 'Inventario',
+  atencion: 'Atención', personal: 'Personal'
 };
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => ir(btn.dataset.sec)));
 
@@ -32,6 +33,8 @@ function ir(sec) {
   if (sec === 'historia') cargarSelectPacientesHistoria();
   if (sec === 'ventas') cargarVentas();
   if (sec === 'inventario') cargarProductos();
+  if (sec === 'atencion') cargarAtenciones();
+  if (sec === 'personal') cargarStaff();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -755,7 +758,139 @@ async function subirFotoPacienteSiHay(pacienteId) {
 }
 
 
+// ══════════════════════════════════════════════════════════════
+// ROLES — control de acceso por tipo de personal
+// ══════════════════════════════════════════════════════════════
+const rolStaff = user?.rol_staff || null;
+const esPropietario = !rolStaff || rolStaff === 'propietario';
+const esVeterinario = rolStaff === 'veterinario';
+const esRecepcion = rolStaff === 'recepcion';
 
+if (!esPropietario) {
+  document.querySelector('.nav-item[data-sec="personal"]')?.remove();
+}
+
+// ══════════════════════════════════════════════════════════════
+// ATENCIÓN — sala de espera (flujo central)
+// ══════════════════════════════════════════════════════════════
+let _atenciones = [];
+const prioridadLabel = { emergencia: 'Emergencia', urgente: 'Urgente', prioritario: 'Prioritario', normal: 'Normal' };
+const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
+const flujoEstados = ['llegada','triaje','espera','consulta','diagnostico','tratamiento','venta','seguimiento','cerrada'];
+
+async function cargarAtenciones() {
+  const d = await api('/api/atenciones', { headers: authHeaders() });
+  _atenciones = d.ok ? d.atenciones : [];
+  renderAtenciones();
+}
+
+function renderAtenciones() {
+  const box = document.getElementById('atencionLista');
+  if (!_atenciones.length) {
+    box.innerHTML = '<p style="color:var(--ink-soft);font-size:13.5px;">No hay pacientes en atención activa.</p>';
+    return;
+  }
+  box.innerHTML = _atenciones.map(a => {
+    const idx = flujoEstados.indexOf(a.estado);
+    const siguiente = flujoEstados[idx + 1];
+    return `
+    <div class="atencion-card ${a.prioridad}">
+      <div style="flex:1;">
+        <strong>${a.paciente_nombre}</strong> <span style="color:var(--ink-soft);font-size:13px;">— ${a.cliente_nombre}</span>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+          <span class="badge b-${a.prioridad}">${prioridadLabel[a.prioridad]}</span>
+          <span class="badge b-grey">${estadoAtencionLabel[a.estado]}</span>
+          ${a.staff_nombre ? `<span class="badge b-primary">${a.staff_nombre}</span>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="abrirFichaPaciente(${a.paciente_id})">Ver ficha</button>
+        ${siguiente && siguiente !== 'cerrada' ? `<button class="btn btn-primary btn-sm" onclick="avanzarAtencion(${a.id},'${siguiente}')">Avanzar → ${estadoAtencionLabel[siguiente]}</button>` : ''}
+        ${siguiente === 'cerrada' ? `<button class="btn btn-primary btn-sm" onclick="avanzarAtencion(${a.id},'cerrada')">Cerrar atención</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function avanzarAtencion(id, estado) {
+  const d = await api(`/api/atenciones/${id}/estado`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ estado }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Atención actualizada', 'verde');
+  cargarAtenciones();
+}
+
+async function abrirCrearAtencion() {
+  await asegurarClientesCargados();
+  poblarSelectClientes('at_cliente_id');
+  document.getElementById('at_paciente_id').innerHTML = '<option value="">— Selecciona un cliente primero —</option>';
+  document.getElementById('at_origen').value = 'sin_cita';
+  document.getElementById('at_prioridad').value = 'normal';
+  abrirModal('mAtencion');
+}
+
+async function guardarAtencion() {
+  const cliente_id = document.getElementById('at_cliente_id').value;
+  const paciente_id = document.getElementById('at_paciente_id').value;
+  if (!cliente_id || !paciente_id) { toast('Selecciona cliente y mascota', 'rojo'); return; }
+  const body = {
+    cliente_id, paciente_id,
+    origen: document.getElementById('at_origen').value,
+    prioridad: document.getElementById('at_prioridad').value,
+  };
+  const d = await api('/api/atenciones', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Atención registrada', 'verde');
+  cerrarModal('mAtencion');
+  cargarAtenciones();
+}
+
+// ══════════════════════════════════════════════════════════════
+// PERSONAL (staff)
+// ══════════════════════════════════════════════════════════════
+let _staffList = [];
+const staffRolLabel = { propietario: 'Propietario', veterinario: 'Veterinario', recepcion: 'Recepción' };
+
+async function cargarStaff() {
+  const d = await api('/api/staff', { headers: authHeaders() });
+  _staffList = d.ok ? d.staff : [];
+  document.getElementById('tbStaff').innerHTML = _staffList.length
+    ? _staffList.map(s => `<tr>
+        <td><strong>${s.nombre}</strong></td>
+        <td>${s.email}</td>
+        <td><span class="badge b-primary">${staffRolLabel[s.rol] || s.rol}</span></td>
+        <td><button class="btn btn-danger btn-sm" onclick="eliminarStaff(${s.id})">Eliminar</button></td>
+      </tr>`).join('')
+    : '<tr class="empty-row"><td colspan="4">Aún no has agregado personal</td></tr>';
+}
+
+function abrirCrearStaff() {
+  ['st_nombre','st_email','st_password'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('st_rol').value = 'veterinario';
+  abrirModal('mStaff');
+}
+
+async function guardarStaff() {
+  const body = {
+    nombre: document.getElementById('st_nombre').value.trim(),
+    email: document.getElementById('st_email').value.trim(),
+    password: document.getElementById('st_password').value,
+    rol: document.getElementById('st_rol').value,
+  };
+  if (!body.nombre || !body.email || !body.password) { toast('Completa todos los campos', 'rojo'); return; }
+  const d = await api('/api/staff', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Personal agregado', 'verde');
+  cerrarModal('mStaff');
+  cargarStaff();
+}
+
+async function eliminarStaff(id) {
+  if (!confirm('¿Eliminar este acceso de personal?')) return;
+  const d = await api(`/api/staff/${id}`, { method: 'DELETE', headers: authHeaders() });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Personal eliminado', 'verde');
+  cargarStaff();
+}
 
 // ══════════════════════════════════════════════════════════════
 // INIT

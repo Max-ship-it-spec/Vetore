@@ -14,7 +14,7 @@ function setSesion(token, usuario) {
 function logout() {
   localStorage.removeItem('vc_token');
   localStorage.removeItem('vc_user');
-  window.location.href = 'login.html';
+  window.location.href = 'index.html';
 }
 
 function authHeaders() {
