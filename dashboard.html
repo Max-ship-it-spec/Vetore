@@ -16,12 +16,14 @@
     </div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-sec="inicio"><span class="ic">◧</span> Inicio</button>
+      <button class="nav-item" data-sec="atencion"><span class="ic">🩺</span> Atención</button>
       <button class="nav-item" data-sec="clientes"><span class="ic">👤</span> Clientes</button>
       <button class="nav-item" data-sec="pacientes"><span class="ic">🐾</span> Pacientes</button>
       <button class="nav-item" data-sec="agenda"><span class="ic">📅</span> Agenda</button>
       <button class="nav-item" data-sec="historia"><span class="ic">📋</span> Historia clínica</button>
       <button class="nav-item" data-sec="ventas"><span class="ic">💵</span> Ventas</button>
       <button class="nav-item" data-sec="inventario"><span class="ic">📦</span> Inventario</button>
+      <button class="nav-item" data-sec="personal"><span class="ic">👥</span> Personal</button>
     </nav>
     <div class="sidebar-foot">
       <div class="sidebar-user">
@@ -52,6 +54,10 @@
 
       <!-- INICIO -->
       <section class="section active" id="sec-inicio">
+
+
+
+
   <h3 class="greeting-title" id="greetingTitle">Buenos días</h3>
   <p class="greeting-sub">Esto es lo que está pasando hoy en tu veterinaria.</p>
 
@@ -81,6 +87,32 @@
       <button class="btn btn-ghost" onclick="ir('pacientes');abrirCrearPaciente()">+ Paciente</button>
       <button class="btn btn-ghost" onclick="ir('ventas');abrirCrearVenta()">+ Venta</button>
     </div>
+  </div>
+</section>
+
+
+<!-- PERSONAL -->
+<section class="section" id="sec-personal">
+  <div class="card">
+    <div class="card-header">
+      <h3>Personal de la clínica</h3>
+      <button class="btn btn-primary btn-sm" onclick="abrirCrearStaff()">+ Agregar personal</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th></th></tr></thead>
+      <tbody id="tbStaff"><tr class="empty-row"><td colspan="4">Cargando...</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
+
+        <!-- ATENCIÓN / SALA DE ESPERA -->
+<section class="section" id="sec-atencion">
+  <div class="card">
+    <div class="card-header">
+      <h3>Atención — Sala de espera</h3>
+      <button class="btn btn-primary btn-sm" onclick="abrirCrearAtencion()">+ Nueva atención</button>
+    </div>
+    <div style="padding:18px 22px;" id="atencionLista">Cargando...</div>
   </div>
 </section>
 
@@ -375,6 +407,55 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL: nueva atención -->
+<div class="modal-overlay" id="mAtencion">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mAtencion')">✕</button>
+    <h2>Nueva atención</h2>
+    <p class="modal-sub">Registra la llegada de un paciente</p>
+    <div class="field"><label>Cliente</label><select id="at_cliente_id" onchange="poblarPacientesDeCliente('at_paciente_id', this.value)"></select></div>
+    <div class="field"><label>Mascota</label><select id="at_paciente_id"><option value="">— Selecciona un cliente primero —</option></select></div>
+    <div class="form-row">
+      <div class="field"><label>Origen</label>
+        <select id="at_origen">
+          <option value="sin_cita">Sin cita (walk-in)</option>
+          <option value="con_cita">Con cita programada</option>
+          <option value="emergencia">Emergencia</option>
+        </select>
+      </div>
+      <div class="field"><label>Prioridad</label>
+        <select id="at_prioridad">
+          <option value="normal">Normal</option>
+          <option value="prioritario">Prioritario</option>
+          <option value="urgente">Urgente</option>
+          <option value="emergencia">Emergencia</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="guardarAtencion()">Registrar llegada</button>
+  </div>
+</div>
+
+<!-- MODAL: nuevo staff -->
+<div class="modal-overlay" id="mStaff">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mStaff')">✕</button>
+    <h2>Agregar personal</h2>
+    <p class="modal-sub">Crea el acceso para un veterinario o recepcionista</p>
+    <div class="field"><label>Nombre completo</label><input type="text" id="st_nombre"></div>
+    <div class="field"><label>Email de acceso</label><input type="email" id="st_email"></div>
+    <div class="field"><label>Contraseña</label><input type="text" id="st_password"></div>
+    <div class="field"><label>Rol</label>
+      <select id="st_rol">
+        <option value="veterinario">Veterinario</option>
+        <option value="recepcion">Recepción / Asistente</option>
+        <option value="propietario">Propietario (acceso total)</option>
+      </select>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="guardarStaff()">Crear acceso</button>
+  </div>
+</div>
 
 <script src="js/common.js"></script>
 <script src="js/dashboard.js"></script>

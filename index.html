@@ -1,3 +1,40 @@
-
 <!DOCTYPE html>
-<meta http-equiv="refresh" content="0; url=login.html">
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vetcore — Iniciar sesión</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="vc-logo" id="logoBox"></div>
+    <p class="auth-sub">Software de gestión para clínicas veterinarias</p>
+
+    <div class="auth-error" id="loginError"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>Correo electrónico</label>
+        <input type="email" id="email" placeholder="tu@correo.com" required autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="btnLogin">Iniciar sesión</button>
+    </form>
+
+    <div class="auth-demo">
+      Acceso administrador de Vetcore o cuenta de clínica.<br>
+      ¿Olvidaste tu contraseña? Contacta al administrador.
+    </div>
+  </div>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>
