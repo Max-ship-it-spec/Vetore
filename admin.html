@@ -16,7 +16,7 @@
     </div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-sec="resumen"><span class="ic">◧</span> Resumen</button>
-      <button class="nav-item" data-sec="cuentas"><span class="ic">🏥</span> Cuentas de clínicas</button>
+      <button class="nav-item" data-sec="empresas"><span class="ic">🏥</span> Clínicas</button>
     </nav>
     <div class="sidebar-foot">
       <div class="sidebar-user">
@@ -43,30 +43,27 @@
       <!-- RESUMEN -->
       <section class="section active" id="sec-resumen">
         <div class="stats-grid">
-          <div class="stat-card"><div class="stat-val" id="st-total">—</div><div class="stat-label">Cuentas de clínicas</div></div>
-          <div class="stat-card accent"><div class="stat-val" id="st-activas">—</div><div class="stat-label">Cuentas activas</div></div>
+          <div class="stat-card"><div class="stat-val" id="st-total">—</div><div class="stat-label">Clínicas</div></div>
+          <div class="stat-card accent"><div class="stat-val" id="st-activas">—</div><div class="stat-label">Clínicas activas</div></div>
           <div class="stat-card"><div class="stat-val" id="st-ingresos">—</div><div class="stat-label">Ingreso mensual estimado</div></div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>Cuentas por plan</h3></div>
+          <div class="card-header"><h3>Clínicas por plan</h3></div>
           <div class="table-wrap"><table>
-            <thead><tr><th>Plan</th><th>Cuentas activas</th><th>Ingreso mensual</th></tr></thead>
+            <thead><tr><th>Plan</th><th>Clínicas activas</th><th>Ingreso mensual</th></tr></thead>
             <tbody id="tbPorPlan"><tr class="empty-row"><td colspan="3">Cargando...</td></tr></tbody>
           </table></div>
         </div>
       </section>
 
-      <!-- CUENTAS -->
-      <section class="section" id="sec-cuentas">
+      <!-- EMPRESAS -->
+      <section class="section" id="sec-empresas">
         <div class="card">
           <div class="card-header">
-            <h3>Cuentas de clínicas (clientes de Vetcore)</h3>
-            <button class="btn btn-primary btn-sm" onclick="abrirCrearCuenta()">+ Crear cuenta</button>
+            <h3>Clínicas registradas</h3>
+            <button class="btn btn-primary btn-sm" onclick="abrirCrearEmpresa()">+ Nueva clínica</button>
           </div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Clínica</th><th>Contacto</th><th>Plan</th><th>Estado</th><th>Creada</th><th></th></tr></thead>
-            <tbody id="tbCuentas"><tr class="empty-row"><td colspan="6">Cargando...</td></tr></tbody>
-          </table></div>
+          <div id="listaEmpresas" style="padding:0 22px 22px;">Cargando...</div>
         </div>
       </section>
 
@@ -74,35 +71,80 @@
   </div>
 </div>
 
-<!-- MODAL: crear/editar cuenta -->
-<div class="modal-overlay" id="mCuenta">
+<!-- MODAL: crear empresa + 3 cuentas -->
+<div class="modal-overlay" id="mEmpresa">
+  <div class="modal" style="max-width:640px;">
+    <button class="modal-close" onclick="cerrarModal('mEmpresa')">✕</button>
+    <h2>Nueva clínica</h2>
+    <p class="modal-sub">Crea la clínica y las cuentas de acceso de su equipo</p>
+
+    <div class="form-row">
+      <div class="field"><label>Nombre de la clínica</label><input type="text" id="em_nombre" placeholder="Ej: Jezreel Vet"></div>
+      <div class="field"><label>Plan</label><select id="em_plan"></select></div>
+    </div>
+
+    <h3 style="margin:20px 0 8px;font-size:14px;color:var(--primary-dark);">👑 Propietario (obligatorio)</h3>
+    <div class="form-row">
+      <div class="field"><label>Nombre</label><input type="text" id="pr_nombre_c"></div>
+      <div class="field"><label>Email</label><input type="email" id="pr_email_c"></div>
+    </div>
+    <div class="field"><label>Contraseña</label><input type="text" id="pr_password_c"></div>
+
+    <h3 style="margin:20px 0 8px;font-size:14px;color:var(--primary-dark);">🩺 Veterinario (opcional — puedes agregarlo después)</h3>
+    <div class="form-row">
+      <div class="field"><label>Nombre</label><input type="text" id="ve_nombre_c"></div>
+      <div class="field"><label>Email</label><input type="email" id="ve_email_c"></div>
+    </div>
+    <div class="field"><label>Contraseña</label><input type="text" id="ve_password_c"></div>
+
+    <h3 style="margin:20px 0 8px;font-size:14px;color:var(--primary-dark);">🧑‍💼 Recepción (opcional — puedes agregarlo después)</h3>
+    <div class="form-row">
+      <div class="field"><label>Nombre</label><input type="text" id="re_nombre_c"></div>
+      <div class="field"><label>Email</label><input type="email" id="re_email_c"></div>
+    </div>
+    <div class="field"><label>Contraseña</label><input type="text" id="re_password_c"></div>
+
+    <button class="btn btn-primary btn-block" onclick="guardarEmpresa()">Crear clínica</button>
+  </div>
+</div>
+
+<!-- MODAL: agregar una cuenta suelta a una empresa existente -->
+<div class="modal-overlay" id="mCuentaNueva">
   <div class="modal">
-    <button class="modal-close" onclick="cerrarModal('mCuenta')">✕</button>
-    <h2 id="mCuentaTitulo">Crear cuenta de clínica</h2>
-    <p class="modal-sub">Define los datos de acceso y el plan que va a tener este cliente</p>
-    <input type="hidden" id="cu_id">
-    <div class="form-row">
-      <div class="field"><label>Nombre de la clínica</label><input type="text" id="cu_clinica" placeholder="Ej: Jezreel Vet"></div>
-      <div class="field"><label>Nombre del contacto</label><input type="text" id="cu_nombre" placeholder="Nombre del veterinario/a"></div>
+    <button class="modal-close" onclick="cerrarModal('mCuentaNueva')">✕</button>
+    <h2>Agregar cuenta</h2>
+    <p class="modal-sub" id="mCuentaNuevaSub">—</p>
+    <input type="hidden" id="cn_empresa_id">
+    <div class="field"><label>Rol</label>
+      <select id="cn_rol">
+        <option value="veterinario">Veterinario</option>
+        <option value="recepcion">Recepción</option>
+        <option value="propietario">Propietario</option>
+      </select>
     </div>
-    <div class="form-row">
-      <div class="field"><label>Email de acceso</label><input type="email" id="cu_email" placeholder="clinica@correo.com"></div>
-      <div class="field"><label>Teléfono</label><input type="tel" id="cu_telefono" placeholder="0999999999"></div>
-    </div>
-    <div class="form-row">
-      <div class="field"><label>Contraseña</label><input type="text" id="cu_password" placeholder="Contraseña de acceso"></div>
-      <div class="field"><label>Plan</label>
-        <select id="cu_plan"></select>
-      </div>
-    </div>
-    <div class="field" id="cu_activo_wrap" style="display:none;">
-      <label>Estado de la cuenta</label>
-      <select id="cu_activo">
+    <div class="field"><label>Nombre</label><input type="text" id="cn_nombre"></div>
+    <div class="field"><label>Email</label><input type="email" id="cn_email"></div>
+    <div class="field"><label>Contraseña</label><input type="text" id="cn_password"></div>
+    <button class="btn btn-primary btn-block" onclick="guardarCuentaNueva()">Crear cuenta</button>
+  </div>
+</div>
+
+<!-- MODAL: editar una cuenta existente -->
+<div class="modal-overlay" id="mCuentaEditar">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mCuentaEditar')">✕</button>
+    <h2>Editar cuenta</h2>
+    <p class="modal-sub" id="mCuentaEditarSub">—</p>
+    <input type="hidden" id="ce_id">
+    <div class="field"><label>Nombre</label><input type="text" id="ce_nombre"></div>
+    <div class="field"><label>Nueva contraseña</label><input type="text" id="ce_password" placeholder="Dejar vacío para no cambiarla"></div>
+    <div class="field"><label>Estado</label>
+      <select id="ce_activo">
         <option value="1">Activa</option>
         <option value="0">Desactivada</option>
       </select>
     </div>
-    <button class="btn btn-primary btn-block" onclick="guardarCuenta()" id="btnGuardarCuenta">Crear cuenta</button>
+    <button class="btn btn-primary btn-block" onclick="guardarCuentaEditar()">Guardar cambios</button>
   </div>
 </div>
 

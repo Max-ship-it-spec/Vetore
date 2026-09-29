@@ -24,6 +24,9 @@
       <button class="nav-item" data-sec="ventas"><span class="ic">💵</span> Ventas</button>
       <button class="nav-item" data-sec="inventario"><span class="ic">📦</span> Inventario</button>
       <button class="nav-item" data-sec="personal"><span class="ic">👥</span> Personal</button>
+      <button class="nav-item" data-sec="caja"><span class="ic">🏦</span> Finanzas / Caja</button>
+      <button class="nav-item" data-sec="reportes"><span class="ic">📊</span> Reportes</button>
+      <button class="nav-item" data-sec="config"><span class="ic">⚙️</span> Configuración</button>
     </nav>
     <div class="sidebar-foot">
       <div class="sidebar-user">
@@ -38,83 +41,72 @@
   </aside>
 
   <div class="main">
-<div class="topbar">
-  <div style="display:flex;align-items:center;gap:12px;flex:1;">
-    <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')"><span></span><span></span><span></span></button>
-    <h2 id="pageTitle">Inicio</h2>
-  </div>
-  <div class="search-bar-wrap">
-    <span class="search-ic">🔍</span>
-    <input type="text" id="globalSearch" placeholder="Buscar paciente, tutor o teléfono..." oninput="buscarGlobal(this.value)" onfocus="if(this.value)document.getElementById('searchResults').classList.add('open')">
-    <div class="search-results" id="searchResults"></div>
-  </div>
-</div>
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;">
+        <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')"><span></span><span></span><span></span></button>
+        <h2 id="pageTitle">Inicio</h2>
+      </div>
+      <div class="search-bar-wrap">
+        <span class="search-ic">🔍</span>
+        <input type="text" id="globalSearch" placeholder="Buscar paciente, tutor o teléfono..." oninput="buscarGlobal(this.value)" onfocus="if(this.value)document.getElementById('searchResults').classList.add('open')">
+        <div class="search-results" id="searchResults"></div>
+      </div>
+    </div>
 
     <div class="content">
 
       <!-- INICIO -->
       <section class="section active" id="sec-inicio">
+        <h3 class="greeting-title" id="greetingTitle">Buenos días</h3>
+        <p class="greeting-sub">Esto es lo que está pasando hoy en tu veterinaria.</p>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-val" id="st-citasHoy">—</div><div class="stat-label">Citas hoy</div></div>
+          <div class="stat-card accent"><div class="stat-val" id="st-enEspera">—</div><div class="stat-label">En espera</div></div>
+          <div class="stat-card"><div class="stat-val" id="st-ventasHoy">—</div><div class="stat-label">Ventas hoy</div></div>
+          <div class="stat-card accent"><div class="stat-val" id="st-alertas">—</div><div class="stat-label">Alertas</div></div>
+        </div>
+        <div class="inicio-grid">
+          <div class="card">
+            <div class="card-header"><h3>Próximas citas</h3></div>
+            <div style="padding:6px 22px 14px;" id="inicioProximasCitas">Cargando...</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Atención</h3></div>
+            <div style="padding:6px 22px 14px;" id="inicioAlertas">Cargando...</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Accesos rápidos</h3></div>
+          <div style="padding:18px 22px;" class="quick-actions">
+            <button class="btn btn-primary" onclick="ir('historia')">+ Nueva consulta</button>
+            <button class="btn btn-primary" onclick="ir('agenda');abrirCrearCita()">+ Nueva cita</button>
+            <button class="btn btn-ghost" onclick="ir('pacientes');abrirCrearPaciente()">+ Paciente</button>
+            <button class="btn btn-ghost" onclick="ir('ventas');abrirCrearVenta()">+ Venta</button>
+          </div>
+        </div>
+      </section>
 
+      <!-- PERSONAL -->
+      <section class="section" id="sec-personal">
+        <div class="card">
+          <div class="card-header"><h3>Personal de la clínica</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="tbStaff"><tr class="empty-row"><td colspan="5">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
 
-
-
-  <h3 class="greeting-title" id="greetingTitle">Buenos días</h3>
-  <p class="greeting-sub">Esto es lo que está pasando hoy en tu veterinaria.</p>
-
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-val" id="st-citasHoy">—</div><div class="stat-label">Citas hoy</div></div>
-    <div class="stat-card accent"><div class="stat-val" id="st-enEspera">—</div><div class="stat-label">En espera</div></div>
-    <div class="stat-card"><div class="stat-val" id="st-ventasHoy">—</div><div class="stat-label">Ventas hoy</div></div>
-    <div class="stat-card accent"><div class="stat-val" id="st-alertas">—</div><div class="stat-label">Alertas</div></div>
-  </div>
-
-  <div class="inicio-grid">
-    <div class="card">
-      <div class="card-header"><h3>Próximas citas</h3></div>
-      <div style="padding:6px 22px 14px;" id="inicioProximasCitas">Cargando...</div>
-    </div>
-    <div class="card">
-      <div class="card-header"><h3>Atención</h3></div>
-      <div style="padding:6px 22px 14px;" id="inicioAlertas">Cargando...</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><h3>Accesos rápidos</h3></div>
-    <div style="padding:18px 22px;" class="quick-actions">
-      <button class="btn btn-primary" onclick="ir('historia')">+ Nueva consulta</button>
-      <button class="btn btn-primary" onclick="ir('agenda');abrirCrearCita()">+ Nueva cita</button>
-      <button class="btn btn-ghost" onclick="ir('pacientes');abrirCrearPaciente()">+ Paciente</button>
-      <button class="btn btn-ghost" onclick="ir('ventas');abrirCrearVenta()">+ Venta</button>
-    </div>
-  </div>
-</section>
-
-
-<!-- PERSONAL -->
-<section class="section" id="sec-personal">
-  <div class="card">
-    <div class="card-header">
-      <h3>Personal de la clínica</h3>
-      <button class="btn btn-primary btn-sm" onclick="abrirCrearStaff()">+ Agregar personal</button>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th></th></tr></thead>
-      <tbody id="tbStaff"><tr class="empty-row"><td colspan="4">Cargando...</td></tr></tbody>
-    </table></div>
-  </div>
-</section>
-
-        <!-- ATENCIÓN / SALA DE ESPERA -->
-<section class="section" id="sec-atencion">
-  <div class="card">
-    <div class="card-header">
-      <h3>Atención — Sala de espera</h3>
-      <button class="btn btn-primary btn-sm" onclick="abrirCrearAtencion()">+ Nueva atención</button>
-    </div>
-    <div style="padding:18px 22px;" id="atencionLista">Cargando...</div>
-  </div>
-</section>
+      <!-- ATENCIÓN / SALA DE ESPERA -->
+      <section class="section" id="sec-atencion">
+        <div class="card">
+          <div class="card-header">
+            <h3>Atención — Sala de espera</h3>
+            <button class="btn btn-primary btn-sm" onclick="abrirCrearAtencion()">+ Nueva atención</button>
+          </div>
+          <div style="padding:18px 22px;" id="atencionLista">Cargando...</div>
+        </div>
+      </section>
 
       <!-- CLIENTES -->
       <section class="section" id="sec-clientes">
@@ -152,8 +144,8 @@
             <button class="btn btn-primary btn-sm" onclick="abrirCrearCita()">+ Nueva cita</button>
           </div>
           <div class="table-wrap"><table>
-            <thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="tbCitas"><tr class="empty-row"><td colspan="7">Cargando...</td></tr></tbody>
+            <thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Veterinario</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="tbCitas"><tr class="empty-row"><td colspan="8">Cargando...</td></tr></tbody>
           </table></div>
         </div>
       </section>
@@ -204,6 +196,102 @@
         </div>
       </section>
 
+      <!-- CAJA -->
+      <section class="section" id="sec-caja">
+        <div class="card">
+          <div class="card-header">
+            <h3>Finanzas / Caja</h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="date" id="cj_desde" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);">
+              <span style="color:var(--ink-soft);">a</span>
+              <input type="date" id="cj_hasta" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);">
+              <button class="btn btn-ghost btn-sm" onclick="cargarCaja()">Filtrar</button>
+            </div>
+          </div>
+          <div class="stats-grid" style="padding:0 22px;">
+            <div class="stat-card"><div class="stat-val" id="cj-total">—</div><div class="stat-label">Total cobrado</div></div>
+            <div class="stat-card accent"><div class="stat-val" id="cj-cantidad">—</div><div class="stat-label">Ventas pagadas</div></div>
+            <div class="stat-card"><div class="stat-val" id="cj-pendiente">—</div><div class="stat-label">Pendiente de cobro</div></div>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Método de pago</th><th>Cantidad</th><th>Total</th></tr></thead>
+            <tbody id="tbCajaMetodo"><tr class="empty-row"><td colspan="3">Cargando...</td></tr></tbody>
+          </table></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Día</th><th>Cantidad</th><th>Total</th></tr></thead>
+            <tbody id="tbCajaDia"><tr class="empty-row"><td colspan="3">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- REPORTES -->
+      <section class="section" id="sec-reportes">
+        <div class="card">
+          <div class="card-header">
+            <h3>Reportes</h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="date" id="rp_desde" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);">
+              <span style="color:var(--ink-soft);">a</span>
+              <input type="date" id="rp_hasta" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);">
+              <button class="btn btn-ghost btn-sm" onclick="cargarReportes()">Filtrar</button>
+            </div>
+          </div>
+          <div class="stats-grid" style="padding:0 22px;">
+            <div class="stat-card"><div class="stat-val" id="rp-consultas">—</div><div class="stat-label">Consultas registradas</div></div>
+          </div>
+          <div class="inicio-grid" style="padding:0 22px 22px;">
+            <div class="card">
+              <div class="card-header"><h3>Citas por estado</h3></div>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Estado</th><th>Total</th></tr></thead>
+                <tbody id="tbRepCitas"><tr class="empty-row"><td colspan="2">Cargando...</td></tr></tbody>
+              </table></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h3>Atenciones por veterinario</h3></div>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Veterinario</th><th>Atenciones</th></tr></thead>
+                <tbody id="tbRepVet"><tr class="empty-row"><td colspan="2">Cargando...</td></tr></tbody>
+              </table></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Productos y servicios más vendidos</h3></div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Producto / servicio</th><th>Cantidad</th><th>Total</th></tr></thead>
+              <tbody id="tbRepProductos"><tr class="empty-row"><td colspan="3">Cargando...</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONFIGURACIÓN -->
+      <section class="section" id="sec-config">
+        <div class="card">
+          <div class="card-header"><h3>Datos de la clínica</h3></div>
+          <div style="padding:18px 22px;max-width:420px;">
+            <div class="field"><label>Nombre de la clínica</label><input type="text" id="cf_nombre"></div>
+            <div class="field"><label>Plan</label><input type="text" id="cf_plan" disabled></div>
+            <button class="btn btn-primary" onclick="guardarConfiguracion()">Guardar cambios</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Cambiar mi contraseña</h3></div>
+          <div style="padding:18px 22px;max-width:420px;">
+            <div class="field"><label>Contraseña actual</label><input type="password" id="cf_pass_actual"></div>
+            <div class="field"><label>Contraseña nueva</label><input type="password" id="cf_pass_nueva"></div>
+            <button class="btn btn-primary" onclick="cambiarPassword()">Actualizar contraseña</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Respaldos / Seguridad</h3></div>
+          <div style="padding:18px 22px;">
+            <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:12px;">Descarga una copia de todos los datos de tu clínica (clientes, pacientes, agenda, historias, inventario y ventas) en formato JSON.</p>
+            <button class="btn btn-ghost" onclick="descargarRespaldo()">Descargar respaldo</button>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
 </div>
@@ -235,14 +323,12 @@
     <h2 id="mPacienteTitulo">Nueva mascota</h2>
     <p class="modal-sub">Datos del paciente</p>
     <div class="pac-foto-upload">
-  <div id="pa_foto_preview_box">
-    <div class="pac-foto-placeholder">🐾</div>
-  </div>
-  <div>
-    <input type="file" id="pa_foto_input" accept="image/*" style="display:none;" onchange="previsualizarFotoPaciente(event)">
-    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('pa_foto_input').click()">Subir foto</button>
-  </div>
-</div>
+      <div id="pa_foto_preview_box"><div class="pac-foto-placeholder">🐾</div></div>
+      <div>
+        <input type="file" id="pa_foto_input" accept="image/*" style="display:none;" onchange="previsualizarFotoPaciente(event)">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('pa_foto_input').click()">Subir foto</button>
+      </div>
+    </div>
     <input type="hidden" id="pa_id">
     <div class="field"><label>Propietario</label><select id="pa_cliente_id"></select></div>
     <div class="form-row">
@@ -277,6 +363,7 @@
     <p class="modal-sub">Agenda una cita en el calendario</p>
     <div class="field"><label>Cliente</label><select id="ci_cliente_id" onchange="poblarPacientesDeCliente('ci_paciente_id', this.value)"></select></div>
     <div class="field"><label>Mascota</label><select id="ci_paciente_id"><option value="">— Selecciona un cliente primero —</option></select></div>
+    <div class="field"><label>Veterinario</label><select id="ci_veterinario_id"><option value="">— Sin asignar —</option></select></div>
     <div class="form-row">
       <div class="field"><label>Fecha</label><input type="date" id="ci_fecha"></div>
       <div class="field"><label>Hora</label><input type="time" id="ci_hora"></div>
@@ -309,6 +396,7 @@
     </div>
     <div class="field"><label>Diagnóstico</label><textarea id="hc_diagnostico" rows="2"></textarea></div>
     <div class="field"><label>Tratamiento</label><textarea id="hc_tratamiento" rows="2"></textarea></div>
+    <div class="field"><label>Medicamentos / servicios</label><textarea id="hc_medicamentos" rows="2" placeholder="Ej: Amoxicilina 250mg cada 12h x 7 días"></textarea></div>
     <div class="field"><label>Recomendaciones</label><textarea id="hc_recomendaciones" rows="2"></textarea></div>
     <button class="btn btn-primary btn-block" onclick="guardarConsulta()">Guardar consulta</button>
   </div>
@@ -345,7 +433,6 @@
       <div class="field"><label>Cliente (opcional)</label><select id="ve_cliente_id" onchange="poblarPacientesDeCliente('ve_paciente_id', this.value)"><option value="">— Sin cliente —</option></select></div>
       <div class="field"><label>Mascota (opcional)</label><select id="ve_paciente_id"><option value="">—</option></select></div>
     </div>
-
     <div class="field">
       <label>Agregar producto del inventario</label>
       <div style="display:flex;gap:8px;">
@@ -361,25 +448,36 @@
         <button type="button" class="btn btn-ghost btn-sm" onclick="agregarItemLibre()">Agregar</button>
       </div>
     </div>
-
     <div id="ve_items_list" style="margin:14px 0;"></div>
-
     <div class="form-row">
       <div class="field"><label>Descuento</label><input type="number" step="0.01" id="ve_descuento" value="0" oninput="renderItemsVenta()"></div>
-      <div class="field"><label>Método de pago</label>
-        <select id="ve_metodo">
-          <option value="efectivo">Efectivo</option>
-          <option value="tarjeta">Tarjeta</option>
-          <option value="transferencia">Transferencia</option>
+      <div class="field"><label>Estado de pago</label>
+        <select id="ve_estado_pago">
+          <option value="pagado">Pagado ahora</option>
+          <option value="pendiente">Pendiente de cobro</option>
         </select>
       </div>
     </div>
-
+    <div class="field"><label>Método de pago</label>
+      <select id="ve_metodo">
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta">Tarjeta</option>
+        <option value="transferencia">Transferencia</option>
+      </select>
+    </div>
     <div style="display:flex;justify-content:space-between;font-weight:800;font-size:17px;margin:10px 0 18px;">
       <span>Total</span><span id="ve_total_txt">$0.00</span>
     </div>
-
     <button class="btn btn-primary btn-block" onclick="guardarVenta()">Registrar venta</button>
+  </div>
+</div>
+
+<!-- MODAL: comprobante de venta -->
+<div class="modal-overlay" id="mComprobante">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mComprobante')">✕</button>
+    <h2>Comprobante</h2>
+    <div id="cp_contenido"></div>
   </div>
 </div>
 
@@ -406,8 +504,6 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <!-- MODAL: nueva atención -->
 <div class="modal-overlay" id="mAtencion">
   <div class="modal">
@@ -416,6 +512,7 @@
     <p class="modal-sub">Registra la llegada de un paciente</p>
     <div class="field"><label>Cliente</label><select id="at_cliente_id" onchange="poblarPacientesDeCliente('at_paciente_id', this.value)"></select></div>
     <div class="field"><label>Mascota</label><select id="at_paciente_id"><option value="">— Selecciona un cliente primero —</option></select></div>
+    <div class="field"><label>Veterinario</label><select id="at_veterinario_id"><option value="">— Sin asignar —</option></select></div>
     <div class="form-row">
       <div class="field"><label>Origen</label>
         <select id="at_origen">
@@ -437,25 +534,26 @@
   </div>
 </div>
 
-<!-- MODAL: nuevo staff -->
+<!-- MODAL: editar personal -->
 <div class="modal-overlay" id="mStaff">
   <div class="modal">
     <button class="modal-close" onclick="cerrarModal('mStaff')">✕</button>
-    <h2>Agregar personal</h2>
-    <p class="modal-sub">Crea el acceso para un veterinario o recepcionista</p>
-    <div class="field"><label>Nombre completo</label><input type="text" id="st_nombre"></div>
-    <div class="field"><label>Email de acceso</label><input type="email" id="st_email"></div>
-    <div class="field"><label>Contraseña</label><input type="text" id="st_password"></div>
-    <div class="field"><label>Rol</label>
-      <select id="st_rol">
-        <option value="veterinario">Veterinario</option>
-        <option value="recepcion">Recepción / Asistente</option>
-        <option value="propietario">Propietario (acceso total)</option>
+    <h2>Editar personal</h2>
+    <p class="modal-sub" id="mStaffSub">—</p>
+    <input type="hidden" id="st_id">
+    <div class="field"><label>Nombre</label><input type="text" id="st_nombre"></div>
+    <div class="field"><label>Nueva contraseña</label><input type="text" id="st_password" placeholder="Dejar vacío para no cambiarla"></div>
+    <div class="field"><label>Estado</label>
+      <select id="st_activo">
+        <option value="1">Activa</option>
+        <option value="0">Desactivada</option>
       </select>
     </div>
-    <button class="btn btn-primary btn-block" onclick="guardarStaff()">Crear acceso</button>
+    <button class="btn btn-primary btn-block" onclick="guardarPersonal()">Guardar cambios</button>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <script src="js/common.js"></script>
 <script src="js/dashboard.js"></script>

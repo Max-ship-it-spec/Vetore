@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vetcore — Panel Veterinario</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <div class="vc-logo" id="logoBox"></div>
+      <div class="sidebar-tag">Veterinario</div>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-sec="inicio"><span class="ic">◧</span> Dashboard</button>
+      <button class="nav-item" data-sec="atencion"><span class="ic">🩺</span> Atenciones</button>
+      <button class="nav-item" data-sec="pacientes"><span class="ic">🐾</span> Pacientes</button>
+      <button class="nav-item" data-sec="historia"><span class="ic">📋</span> Historia clínica</button>
+      <button class="nav-item" data-sec="agenda"><span class="ic">📅</span> Agenda del día</button>
+      <button class="nav-item" data-sec="ventas"><span class="ic">🧾</span> Ventas / Recetas</button>
+      <button class="nav-item" data-sec="inventario"><span class="ic">📦</span> Inventario</button>
+      <button class="nav-item" data-sec="reportes"><span class="ic">📊</span> Reportes</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="avatarLetter">V</div>
+        <div>
+          <div class="sidebar-user-name" id="userName">—</div>
+          <div class="sidebar-user-plan">Veterinario</div>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-block btn-sm" onclick="logout()">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;">
+        <button class="hamburger" onclick="document.getElementById('sidebar').classList.toggle('open')"><span></span><span></span><span></span></button>
+        <h2 id="pageTitle">Dashboard</h2>
+      </div>
+      <div class="search-bar-wrap">
+        <span class="search-ic">🔍</span>
+        <input type="text" id="globalSearch" placeholder="Buscar paciente..." oninput="buscarGlobal(this.value)" onfocus="if(this.value)document.getElementById('searchResults').classList.add('open')">
+        <div class="search-results" id="searchResults"></div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <section class="section active" id="sec-inicio">
+        <h3 class="greeting-title">¿A quién tengo que atender?</h3>
+        <p class="greeting-sub">Tu agenda y tus pacientes de hoy.</p>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-val" id="st-citasHoy">—</div><div class="stat-label">Agenda del día</div></div>
+          <div class="stat-card accent"><div class="stat-val" id="st-pacientesAsignados">—</div><div class="stat-label">Pacientes asignados</div></div>
+          <div class="stat-card"><div class="stat-val" id="st-alertas">—</div><div class="stat-label">Alertas</div></div>
+        </div>
+        <div class="inicio-grid">
+          <div class="card">
+            <div class="card-header"><h3>Agenda del día</h3></div>
+            <div style="padding:6px 22px 14px;" id="inicioAgendaDia">Cargando...</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Atenciones recientes</h3></div>
+            <div style="padding:6px 22px 14px;" id="inicioAtencionesRecientes">Cargando...</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Accesos rápidos</h3></div>
+          <div style="padding:18px 22px;" class="quick-actions">
+            <button class="btn btn-primary" onclick="ir('atencion');abrirCrearAtencion()">+ Nueva atención</button>
+            <button class="btn btn-primary" style="background:var(--danger,#c0392b);" onclick="ir('atencion');abrirCrearAtencion('emergencia')">🚨 Emergencia</button>
+            <button class="btn btn-ghost" onclick="ir('pacientes')">Buscar paciente</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ATENCIONES -->
+      <section class="section" id="sec-atencion">
+        <div class="card">
+          <div class="card-header">
+            <h3>Mis atenciones activas</h3>
+            <button class="btn btn-primary btn-sm" onclick="abrirCrearAtencion()">+ Nueva atención</button>
+          </div>
+          <div style="padding:18px 22px;" id="atencionLista">Cargando...</div>
+        </div>
+      </section>
+
+      <!-- PACIENTES -->
+      <section class="section" id="sec-pacientes">
+        <div class="card">
+          <div class="card-header"><h3>Pacientes</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Nombre</th><th>Propietario</th><th>Especie / Raza</th><th>Peso</th><th></th></tr></thead>
+            <tbody id="tbPacientes"><tr class="empty-row"><td colspan="5">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- HISTORIA CLÍNICA -->
+      <section class="section" id="sec-historia">
+        <div class="card">
+          <div class="card-header"><h3>Historia clínica</h3></div>
+          <div style="padding:18px 22px;border-bottom:1px solid var(--border);">
+            <div class="field" style="margin:0;max-width:420px;">
+              <label>Selecciona un paciente</label>
+              <select id="hc_paciente_select" onchange="cargarHistoriaPaciente()">
+                <option value="">— Elige una mascota —</option>
+              </select>
+            </div>
+          </div>
+          <div style="padding:20px 22px;" id="hc_wrap">
+            <p style="color:var(--ink-soft);font-size:13.5px;">Elige un paciente para ver o registrar su historia clínica.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- AGENDA DEL DÍA -->
+      <section class="section" id="sec-agenda">
+        <div class="card">
+          <div class="card-header"><h3>Mi agenda de hoy</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Motivo</th><th>Estado</th></tr></thead>
+            <tbody id="tbCitas"><tr class="empty-row"><td colspan="5">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- VENTAS / RECETAS -->
+      <section class="section" id="sec-ventas">
+        <div class="card">
+          <div class="card-header">
+            <h3>Ventas y recetas que registré</h3>
+            <button class="btn btn-primary btn-sm" onclick="abrirCrearVenta()">+ Crear venta / receta</button>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Fecha</th><th>Cliente</th><th>Mascota</th><th>Total</th><th>Pago</th><th></th></tr></thead>
+            <tbody id="tbVentas"><tr class="empty-row"><td colspan="6">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- INVENTARIO (solo consulta) -->
+      <section class="section" id="sec-inventario">
+        <div class="card">
+          <div class="card-header"><h3>Consultar inventario</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Producto</th><th>Categoría</th><th>Precio venta</th><th>Stock</th></tr></thead>
+            <tbody id="tbProductos"><tr class="empty-row"><td colspan="4">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- REPORTES (limitado) -->
+      <section class="section" id="sec-reportes">
+        <div class="card">
+          <div class="card-header"><h3>Mis reportes de hoy</h3></div>
+          <div class="stats-grid" style="padding:0 22px;">
+            <div class="stat-card"><div class="stat-val" id="rp-citas">—</div><div class="stat-label">Mis citas hoy</div></div>
+            <div class="stat-card accent"><div class="stat-val" id="rp-atenciones">—</div><div class="stat-label">Mis atenciones hoy</div></div>
+          </div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Estado de mis citas</th><th>Total</th></tr></thead>
+            <tbody id="tbRepCitas"><tr class="empty-row"><td colspan="2">Cargando...</td></tr></tbody>
+          </table></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: consulta (historia clínica) -->
+<div class="modal-overlay" id="mConsulta">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mConsulta')">✕</button>
+    <h2>Nueva consulta</h2>
+    <p class="modal-sub" id="mConsultaSub">Registro de historia clínica</p>
+    <div class="form-row">
+      <div class="field"><label>Fecha</label><input type="date" id="hc_fecha"></div>
+      <div class="field"><label>Próximo control</label><input type="date" id="hc_proximo"></div>
+    </div>
+    <div class="field"><label>Motivo de consulta</label><input type="text" id="hc_motivo"></div>
+    <div class="field"><label>Anamnesis</label><textarea id="hc_anamnesis" rows="2"></textarea></div>
+    <div class="form-row">
+      <div class="field"><label>Peso (kg)</label><input type="number" step="0.01" id="hc_peso"></div>
+      <div class="field"><label>Temperatura (°C)</label><input type="number" step="0.1" id="hc_temp"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Frecuencia cardíaca</label><input type="text" id="hc_fc"></div>
+      <div class="field"><label>Frecuencia respiratoria</label><input type="text" id="hc_fr"></div>
+    </div>
+    <div class="field"><label>Diagnóstico</label><textarea id="hc_diagnostico" rows="2"></textarea></div>
+    <div class="field"><label>Tratamiento</label><textarea id="hc_tratamiento" rows="2"></textarea></div>
+    <div class="field"><label>Medicamentos / servicios (receta)</label><textarea id="hc_medicamentos" rows="2" placeholder="Ej: Amoxicilina 250mg cada 12h x 7 días"></textarea></div>
+    <div class="field"><label>Recomendaciones</label><textarea id="hc_recomendaciones" rows="2"></textarea></div>
+    <button class="btn btn-primary btn-block" onclick="guardarConsulta()">Guardar consulta</button>
+  </div>
+</div>
+
+<!-- MODAL: Ficha del Paciente -->
+<div class="modal-overlay" id="mFichaPaciente">
+  <div class="modal" style="max-width:600px;">
+    <button class="modal-close" onclick="cerrarModal('mFichaPaciente')">✕</button>
+    <div class="ficha-header-modal">
+      <div class="ficha-avatar-lg" id="fp_avatar">🐾</div>
+      <div>
+        <h2 id="fp_nombre" style="margin-bottom:2px;">—</h2>
+        <p class="modal-sub" style="margin:0;" id="fp_sub">—</p>
+      </div>
+    </div>
+    <div class="ficha-tabs">
+      <button class="ficha-tab-btn active" id="fp_tab_resumen" onclick="cambiarTabFicha('resumen')">Resumen</button>
+      <button class="ficha-tab-btn" id="fp_tab_historia" onclick="cambiarTabFicha('historia')">Historia clínica</button>
+    </div>
+    <div id="fp_contenido">Cargando...</div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn btn-primary" style="flex:1;justify-content:center;" onclick="fpNuevaConsulta()">+ Nueva consulta</button>
+      <button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="fpNuevaVenta()">+ Venta / receta</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: nueva atención -->
+<div class="modal-overlay" id="mAtencion">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mAtencion')">✕</button>
+    <h2>Nueva atención</h2>
+    <p class="modal-sub">Se te asigna a ti automáticamente</p>
+    <div class="field"><label>Cliente</label><select id="at_cliente_id" onchange="poblarPacientesDeCliente('at_paciente_id', this.value)"></select></div>
+    <div class="field"><label>Mascota</label><select id="at_paciente_id"><option value="">— Selecciona un cliente primero —</option></select></div>
+    <div class="form-row">
+      <div class="field"><label>Origen</label>
+        <select id="at_origen">
+          <option value="sin_cita">Sin cita (walk-in)</option>
+          <option value="con_cita">Con cita programada</option>
+          <option value="emergencia">Emergencia</option>
+        </select>
+      </div>
+      <div class="field"><label>Prioridad</label>
+        <select id="at_prioridad">
+          <option value="normal">Normal</option>
+          <option value="prioritario">Prioritario</option>
+          <option value="urgente">Urgente</option>
+          <option value="emergencia">Emergencia</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="guardarAtencion()">Registrar llegada</button>
+  </div>
+</div>
+
+<!-- MODAL: venta / receta -->
+<div class="modal-overlay" id="mVenta">
+  <div class="modal" style="max-width:560px;">
+    <button class="modal-close" onclick="cerrarModal('mVenta')">✕</button>
+    <h2>Nueva venta / receta</h2>
+    <p class="modal-sub">Registra medicamentos, servicios o consultas cobradas</p>
+    <div class="form-row">
+      <div class="field"><label>Cliente (opcional)</label><select id="ve_cliente_id" onchange="poblarPacientesDeCliente('ve_paciente_id', this.value)"><option value="">— Sin cliente —</option></select></div>
+      <div class="field"><label>Mascota (opcional)</label><select id="ve_paciente_id"><option value="">—</option></select></div>
+    </div>
+    <div class="field">
+      <label>Agregar producto del inventario</label>
+      <div style="display:flex;gap:8px;">
+        <select id="ve_producto_select" style="flex:1;"></select>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="agregarItemDesdeInventario()">Agregar</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>O agregar un ítem libre (servicio, consulta...)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="ve_item_nombre" placeholder="Nombre del servicio" style="flex:2;">
+        <input type="number" id="ve_item_precio" placeholder="$" style="flex:1;" step="0.01">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="agregarItemLibre()">Agregar</button>
+      </div>
+    </div>
+    <div id="ve_items_list" style="margin:14px 0;"></div>
+    <div class="form-row">
+      <div class="field"><label>Descuento</label><input type="number" step="0.01" id="ve_descuento" value="0" oninput="renderItemsVenta()"></div>
+      <div class="field"><label>Estado de pago</label>
+        <select id="ve_estado_pago">
+          <option value="pagado">Pagado ahora</option>
+          <option value="pendiente">Pendiente de cobro</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Método de pago</label>
+      <select id="ve_metodo">
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta">Tarjeta</option>
+        <option value="transferencia">Transferencia</option>
+      </select>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-weight:800;font-size:17px;margin:10px 0 18px;">
+      <span>Total</span><span id="ve_total_txt">$0.00</span>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="guardarVenta()">Registrar</button>
+  </div>
+</div>
+
+<!-- MODAL: comprobante -->
+<div class="modal-overlay" id="mComprobante">
+  <div class="modal">
+    <button class="modal-close" onclick="cerrarModal('mComprobante')">✕</button>
+    <h2>Comprobante</h2>
+    <div id="cp_contenido"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/common.js"></script>
+<script src="js/dashboard-veterinario.js"></script>
+</body>
+</html>
