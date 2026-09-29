@@ -2,7 +2,6 @@
 // VETCORE — helpers compartidos (API, sesión, utilidades)
 // ══════════════════════════════════════════════════════════════
 
-// ⚠️ Cambia esta URL por la de tu backend en producción
 const API = 'https://vetcore-backend-4ntt.onrender.com';
 
 function getToken() { return localStorage.getItem('vc_token'); }
@@ -31,12 +30,19 @@ async function api(path, opts = {}) {
   }
 }
 
-function requireRole(rolEsperado) {
+function destinoPorRol(rol) {
+  if (rol === 'admin') return 'admin.html';
+  if (rol === 'veterinario') return 'dashboard-veterinario.html';
+  if (rol === 'recepcion') return 'dashboard-recepcion.html';
+  return 'dashboard.html'; // propietario
+}
+
+function requireRole(...rolesEsperados) {
   const token = getToken();
   const user = getUser();
   if (!token || !user) { window.location.href = 'login.html'; return null; }
-  if (user.rol !== rolEsperado) {
-    window.location.href = user.rol === 'admin' ? 'admin.html' : 'dashboard.html';
+  if (!rolesEsperados.includes(user.rol)) {
+    window.location.href = destinoPorRol(user.rol);
     return null;
   }
   return user;

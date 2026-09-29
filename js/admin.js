@@ -7,7 +7,7 @@ if (user) {
 }
 
 // ── Navegación ──────────────────────────────────────────────
-const titles = { resumen: 'Resumen', cuentas: 'Cuentas de clínicas' };
+const titles = { resumen: 'Resumen', empresas: 'Clínicas registradas' };
 document.querySelectorAll('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => ir(btn.dataset.sec));
 });
@@ -20,7 +20,7 @@ function ir(sec) {
   document.getElementById('pageTitle').textContent = titles[sec];
   document.getElementById('sidebar').classList.remove('open');
   if (sec === 'resumen') cargarResumen();
-  if (sec === 'cuentas') cargarCuentas();
+  if (sec === 'empresas') cargarEmpresas();
 }
 
 // ── Planes (para el <select>) ───────────────────────────────
@@ -28,7 +28,7 @@ let _planes = [];
 async function cargarPlanes() {
   const d = await api('/api/planes');
   _planes = d.ok ? d.planes : [];
-  const sel = document.getElementById('cu_plan');
+  const sel = document.getElementById('em_plan');
   sel.innerHTML = _planes.map(p =>
     `<option value="${p.id}">${p.nombre} — $${Number(p.precio).toFixed(2)}/mes</option>`
   ).join('');
@@ -49,106 +49,185 @@ async function cargarResumen() {
         <td>${p.total}</td>
         <td>${fmtMoney(p.ingreso_mensual)}</td>
       </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="3">Aún no hay cuentas activas</td></tr>';
+    : '<tr class="empty-row"><td colspan="3">Aún no hay clínicas activas</td></tr>';
 }
 
-// ── Cuentas de clínicas ──────────────────────────────────────
-let _cuentas = [];
-async function cargarCuentas() {
-  document.getElementById('tbCuentas').innerHTML = '<tr class="empty-row"><td colspan="6">Cargando...</td></tr>';
-  const d = await api('/api/admin/cuentas', { headers: authHeaders() });
+// ══════════════════════════════════════════════════════════════
+// EMPRESAS (clínicas) — cada una con hasta 3 cuentas de rol
+// ══════════════════════════════════════════════════════════════
+let _empresas = [];
+const rolLabel = { propietario: 'Propietario', veterinario: 'Veterinario', recepcion: 'Recepción' };
+const rolIcono = { propietario: '👑', veterinario: '🩺', recepcion: '🧑‍💼' };
+
+async function cargarEmpresas() {
+  const box = document.getElementById('listaEmpresas');
+  box.innerHTML = 'Cargando...';
+  const d = await api('/api/admin/empresas', { headers: authHeaders() });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  _cuentas = d.cuentas;
-  renderCuentas();
+  _empresas = d.empresas;
+  renderEmpresas();
 }
 
-function renderCuentas() {
-  document.getElementById('tbCuentas').innerHTML = _cuentas.length
-    ? _cuentas.map(c => `<tr>
-        <td><strong>${c.nombre_clinica || '—'}</strong></td>
-        <td>${c.nombre || '—'}<br><span style="font-size:12px;color:var(--ink-soft)">${c.email}</span></td>
-        <td><span class="badge b-primary">${c.plan_nombre || 'Sin plan'}</span></td>
-        <td>${c.activo ? '<span class="badge b-primary">Activa</span>' : '<span class="badge b-danger">Desactivada</span>'}</td>
-        <td style="font-size:12.5px;color:var(--ink-soft)">${fmtFecha(c.created_at)}</td>
-        <td>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost btn-sm" onclick="abrirEditarCuenta(${c.id})">Editar</button>
-            <button class="btn btn-danger btn-sm" onclick="eliminarCuenta(${c.id})">Eliminar</button>
-          </div>
-        </td>
-      </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="6">Aún no has creado cuentas de clínicas</td></tr>';
+function renderEmpresas() {
+  const box = document.getElementById('listaEmpresas');
+  box.innerHTML = _empresas.length ? _empresas.map(e => `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div>
+          <strong style="font-size:15px;">${e.nombre_clinica}</strong>
+          <span class="badge b-primary" style="margin-left:8px;">${e.plan_nombre || 'Sin plan'}</span>
+          ${e.activo ? '<span class="badge b-primary">Activa</span>' : '<span class="badge b-danger">Desactivada</span>'}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="toggleEmpresaActivo(${e.id}, ${e.activo ? 0 : 1})">${e.activo ? 'Desactivar' : 'Activar'}</button>
+          <button class="btn btn-primary btn-sm" onclick="abrirAgregarCuenta(${e.id})">+ Agregar cuenta</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminarEmpresa(${e.id})">Eliminar clínica</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Rol</th><th>Nombre</th><th>Email</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          ${e.cuentas.length ? e.cuentas.map(c => `<tr>
+            <td>${rolIcono[c.rol] || ''} ${rolLabel[c.rol] || c.rol}</td>
+            <td>${c.nombre || '—'}</td>
+            <td>${c.email}</td>
+            <td>${c.activo ? '<span class="badge b-primary">Activa</span>' : '<span class="badge b-danger">Desactivada</span>'}</td>
+            <td>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-ghost btn-sm" onclick='abrirEditarCuenta(${JSON.stringify(c)})'>Editar</button>
+                <button class="btn btn-danger btn-sm" onclick="eliminarCuenta(${c.id})">Eliminar</button>
+              </div>
+            </td>
+          </tr>`).join('') : '<tr class="empty-row"><td colspan="5">Sin cuentas todavía</td></tr>'}
+        </tbody>
+      </table></div>
+    </div>
+  `).join('') : '<p style="color:var(--ink-soft);font-size:13.5px;">Aún no has creado ninguna clínica</p>';
 }
 
-function abrirCrearCuenta() {
-  document.getElementById('mCuentaTitulo').textContent = 'Crear cuenta de clínica';
-  document.getElementById('btnGuardarCuenta').textContent = 'Crear cuenta';
-  document.getElementById('cu_id').value = '';
-  ['cu_clinica', 'cu_nombre', 'cu_email', 'cu_telefono', 'cu_password'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('cu_activo_wrap').style.display = 'none';
-  document.querySelectorAll('#cu_email, #cu_password').forEach(el => el.disabled = false);
-  abrirModal('mCuenta');
+// ── Crear empresa + cuentas ─────────────────────────────────
+function abrirCrearEmpresa() {
+  document.getElementById('em_nombre').value = '';
+  ['pr_nombre_c','pr_email_c','pr_password_c','ve_nombre_c','ve_email_c','ve_password_c','re_nombre_c','re_email_c','re_password_c']
+    .forEach(id => document.getElementById(id).value = '');
+  if (!_planes.length) cargarPlanes();
+  abrirModal('mEmpresa');
 }
 
-function abrirEditarCuenta(id) {
-  const c = _cuentas.find(x => x.id === id);
-  if (!c) return;
-  document.getElementById('mCuentaTitulo').textContent = 'Editar cuenta de clínica';
-  document.getElementById('btnGuardarCuenta').textContent = 'Guardar cambios';
-  document.getElementById('cu_id').value = c.id;
-  document.getElementById('cu_clinica').value = c.nombre_clinica || '';
-  document.getElementById('cu_nombre').value = c.nombre || '';
-  document.getElementById('cu_email').value = c.email || '';
-  document.getElementById('cu_telefono').value = c.telefono || '';
-  document.getElementById('cu_password').value = '';
-  document.getElementById('cu_password').placeholder = 'Dejar vacío para no cambiarla';
-  document.getElementById('cu_plan').value = c.plan_id || '';
-  document.getElementById('cu_activo_wrap').style.display = 'block';
-  document.getElementById('cu_activo').value = c.activo ? '1' : '0';
-  document.getElementById('cu_email').disabled = true;
-  abrirModal('mCuenta');
-}
+async function guardarEmpresa() {
+  const nombre_clinica = document.getElementById('em_nombre').value.trim();
+  const plan_id = document.getElementById('em_plan').value;
+  const propietario = {
+    nombre: document.getElementById('pr_nombre_c').value.trim(),
+    email: document.getElementById('pr_email_c').value.trim(),
+    password: document.getElementById('pr_password_c').value,
+  };
+  if (!nombre_clinica || !plan_id || !propietario.email || !propietario.password) {
+    toast('Nombre de clínica, plan, email y contraseña del propietario son obligatorios', 'rojo');
+    return;
+  }
+  const body = { nombre_clinica, plan_id, propietario };
 
-async function guardarCuenta() {
-  const id = document.getElementById('cu_id').value;
-  const nombre_clinica = document.getElementById('cu_clinica').value.trim();
-  const nombre = document.getElementById('cu_nombre').value.trim();
-  const email = document.getElementById('cu_email').value.trim();
-  const telefono = document.getElementById('cu_telefono').value.trim();
-  const password = document.getElementById('cu_password').value;
-  const plan_id = document.getElementById('cu_plan').value;
-
-  if (!nombre_clinica || !plan_id) { toast('Completa al menos el nombre de la clínica y el plan', 'rojo'); return; }
-
-  if (!id) {
-    if (!email || !password) { toast('Email y contraseña son obligatorios para crear la cuenta', 'rojo'); return; }
-    const d = await api('/api/admin/cuentas', {
-      method: 'POST', headers: authHeaders(),
-      body: JSON.stringify({ nombre_clinica, nombre, email, telefono, password, plan_id })
-    });
-    if (!d.ok) { toast(d.error || 'Error al crear la cuenta', 'rojo'); return; }
-    toast(`Cuenta creada — acceso: ${email}`, 'verde');
-  } else {
-    const activo = document.getElementById('cu_activo').value;
-    const d = await api(`/api/admin/cuentas/${id}`, {
-      method: 'PUT', headers: authHeaders(),
-      body: JSON.stringify({ nombre_clinica, nombre, telefono, plan_id, activo, password: password || undefined })
-    });
-    if (!d.ok) { toast(d.error || 'Error al guardar', 'rojo'); return; }
-    toast('Cuenta actualizada', 'verde');
+  const veEmail = document.getElementById('ve_email_c').value.trim();
+  if (veEmail) {
+    body.veterinario = {
+      nombre: document.getElementById('ve_nombre_c').value.trim(),
+      email: veEmail,
+      password: document.getElementById('ve_password_c').value,
+    };
+  }
+  const reEmail = document.getElementById('re_email_c').value.trim();
+  if (reEmail) {
+    body.recepcion = {
+      nombre: document.getElementById('re_nombre_c').value.trim(),
+      email: reEmail,
+      password: document.getElementById('re_password_c').value,
+    };
   }
 
-  cerrarModal('mCuenta');
-  cargarCuentas();
+  const d = await api('/api/admin/empresas', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  if (!d.ok) { toast(d.error || 'Error al crear la clínica', 'rojo'); return; }
+  toast('Clínica creada correctamente', 'verde');
+  cerrarModal('mEmpresa');
+  cargarEmpresas();
   cargarResumen();
 }
 
+// ── Agregar una cuenta suelta a una empresa existente ────────
+function abrirAgregarCuenta(empresaId) {
+  const e = _empresas.find(x => x.id === empresaId);
+  document.getElementById('cn_empresa_id').value = empresaId;
+  document.getElementById('mCuentaNuevaSub').textContent = e ? `Para: ${e.nombre_clinica}` : '';
+  document.getElementById('cn_nombre').value = '';
+  document.getElementById('cn_email').value = '';
+  document.getElementById('cn_password').value = '';
+  document.getElementById('cn_rol').value = 'veterinario';
+  abrirModal('mCuentaNueva');
+}
+
+async function guardarCuentaNueva() {
+  const empresaId = document.getElementById('cn_empresa_id').value;
+  const body = {
+    rol: document.getElementById('cn_rol').value,
+    nombre: document.getElementById('cn_nombre').value.trim(),
+    email: document.getElementById('cn_email').value.trim(),
+    password: document.getElementById('cn_password').value,
+  };
+  if (!body.email || !body.password) { toast('Email y contraseña son obligatorios', 'rojo'); return; }
+  const d = await api(`/api/admin/empresas/${empresaId}/cuentas`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  if (!d.ok) { toast(d.error || 'Error al crear la cuenta', 'rojo'); return; }
+  toast('Cuenta creada correctamente', 'verde');
+  cerrarModal('mCuentaNueva');
+  cargarEmpresas();
+}
+
+// ── Editar / eliminar una cuenta existente ───────────────────
+function abrirEditarCuenta(cuenta) {
+  document.getElementById('ce_id').value = cuenta.id;
+  document.getElementById('mCuentaEditarSub').textContent = `${rolLabel[cuenta.rol] || cuenta.rol} — ${cuenta.email}`;
+  document.getElementById('ce_nombre').value = cuenta.nombre || '';
+  document.getElementById('ce_password').value = '';
+  document.getElementById('ce_activo').value = cuenta.activo ? '1' : '0';
+  abrirModal('mCuentaEditar');
+}
+
+async function guardarCuentaEditar() {
+  const id = document.getElementById('ce_id').value;
+  const body = {
+    nombre: document.getElementById('ce_nombre').value.trim(),
+    activo: document.getElementById('ce_activo').value,
+    password: document.getElementById('ce_password').value || undefined,
+  };
+  const d = await api(`/api/admin/cuentas/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) });
+  if (!d.ok) { toast(d.error || 'Error al guardar', 'rojo'); return; }
+  toast('Cuenta actualizada', 'verde');
+  cerrarModal('mCuentaEditar');
+  cargarEmpresas();
+}
+
 async function eliminarCuenta(id) {
-  if (!confirm('¿Eliminar esta cuenta de clínica? Se perderán todos sus datos.')) return;
+  if (!confirm('¿Eliminar esta cuenta de acceso?')) return;
   const d = await api(`/api/admin/cuentas/${id}`, { method: 'DELETE', headers: authHeaders() });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
   toast('Cuenta eliminada', 'verde');
-  cargarCuentas();
+  cargarEmpresas();
+}
+
+// ── Activar / desactivar / eliminar una empresa ──────────────
+async function toggleEmpresaActivo(id, activo) {
+  const d = await api(`/api/admin/empresas/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ activo }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast(activo ? 'Clínica activada' : 'Clínica desactivada', 'verde');
+  cargarEmpresas();
+  cargarResumen();
+}
+
+async function eliminarEmpresa(id) {
+  if (!confirm('¿Eliminar esta clínica? Se borrarán también sus 3 cuentas de acceso.')) return;
+  const d = await api(`/api/admin/empresas/${id}`, { method: 'DELETE', headers: authHeaders() });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Clínica eliminada', 'verde');
+  cargarEmpresas();
   cargarResumen();
 }
 

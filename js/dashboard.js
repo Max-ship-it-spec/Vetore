@@ -1,4 +1,4 @@
-const user = requireRole('cliente');
+const user = requireRole('propietario');
 document.getElementById('logoBox').innerHTML = logoSVG() + '<span class="vc-logo-text">Vet<span>core</span></span>';
 
 if (user) {
@@ -14,7 +14,7 @@ if (user) {
 const titles = {
   inicio: 'Inicio', clientes: 'Clientes', pacientes: 'Pacientes', agenda: 'Agenda',
   historia: 'Historia clínica', ventas: 'Ventas', inventario: 'Inventario',
-  atencion: 'Atención', personal: 'Personal'
+  atencion: 'Atención', personal: 'Personal', caja: 'Finanzas / Caja', reportes: 'Reportes', config: 'Configuración'
 };
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => ir(btn.dataset.sec)));
 
@@ -34,20 +34,24 @@ function ir(sec) {
   if (sec === 'ventas') cargarVentas();
   if (sec === 'inventario') cargarProductos();
   if (sec === 'atencion') cargarAtenciones();
-  if (sec === 'personal') cargarStaff();
+  if (sec === 'personal') cargarPersonal();
+  if (sec === 'caja') cargarCaja();
+  if (sec === 'reportes') cargarReportes();
+  if (sec === 'config') cargarConfiguracion();
 }
 
 // ══════════════════════════════════════════════════════════════
-// RESUMEN
+// VETERINARIOS (para asignar citas y atenciones)
 // ══════════════════════════════════════════════════════════════
-async function cargarResumen() {
-  const d = await api('/api/resumen', { headers: authHeaders() });
-  if (!d.ok) return;
-  document.getElementById('st-clientes').textContent = d.totalClientes;
-  document.getElementById('st-pacientes').textContent = d.totalPacientes;
-  document.getElementById('st-citasHoy').textContent = d.citasHoy;
-  document.getElementById('st-ventasMes').textContent = fmtMoney(d.ventasMes);
-  document.getElementById('st-stockBajo').textContent = d.stockBajo;
+let _veterinarios = [];
+async function asegurarVeterinariosCargados() {
+  const d = await api('/api/veterinarios', { headers: authHeaders() });
+  _veterinarios = d.ok ? d.veterinarios : [];
+}
+function poblarSelectVeterinarios(selectId, valorSel) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">— Sin asignar —</option>' +
+    _veterinarios.map(v => `<option value="${v.id}" ${String(v.id) === String(valorSel) ? 'selected' : ''}>${v.nombre}</option>`).join('');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -117,6 +121,17 @@ async function eliminarCliente(id) {
   toast('Cliente eliminado', 'verde');
   cargarClientes();
 }
+async function asegurarClientesCargados() {
+  if (!_clientes.length) {
+    const d = await api('/api/clientes', { headers: authHeaders() });
+    _clientes = d.ok ? d.clientes : [];
+  }
+}
+function poblarSelectClientes(selectId, valorSel) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">— Selecciona un cliente —</option>' +
+    _clientes.map(c => `<option value="${c.id}" ${String(c.id) === String(valorSel) ? 'selected' : ''}>${c.nombre}</option>`).join('');
+}
 
 // ══════════════════════════════════════════════════════════════
 // PACIENTES
@@ -146,17 +161,11 @@ function renderPacientes() {
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="5">Aún no tienes pacientes registrados</td></tr>';
 }
-
-async function asegurarClientesCargados() {
-  if (!_clientes.length) {
-    const d = await api('/api/clientes', { headers: authHeaders() });
-    _clientes = d.ok ? d.clientes : [];
+async function asegurarPacientesCargados() {
+  if (!_pacientes.length) {
+    const d = await api('/api/pacientes', { headers: authHeaders() });
+    _pacientes = d.ok ? d.pacientes : [];
   }
-}
-function poblarSelectClientes(selectId, valorSel) {
-  const sel = document.getElementById(selectId);
-  sel.innerHTML = '<option value="">— Selecciona un cliente —</option>' +
-    _clientes.map(c => `<option value="${c.id}" ${String(c.id) === String(valorSel) ? 'selected' : ''}>${c.nombre}</option>`).join('');
 }
 async function abrirCrearPaciente() {
   await asegurarClientesCargados();
@@ -213,12 +222,10 @@ async function guardarPaciente() {
     method: id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(body)
   });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-
   const fotoOk = await subirFotoPacienteSiHay(id || d.id);
-
   cerrarModal('mPaciente');
   cargarPacientes();
-  if (fotoOk === false) return; // el toast de error de foto ya se mostró y no lo pisamos
+  if (fotoOk === false) return;
   toast('Mascota guardada', 'verde');
 }
 async function eliminarPaciente(id) {
@@ -234,6 +241,7 @@ async function eliminarPaciente(id) {
 // ══════════════════════════════════════════════════════════════
 let _citas = [];
 async function cargarCitas() {
+  await asegurarVeterinariosCargados();
   const d = await api('/api/citas', { headers: authHeaders() });
   _citas = d.ok ? d.citas : [];
   renderCitas();
@@ -246,6 +254,7 @@ function renderCitas() {
         <td>${c.hora ? c.hora.slice(0, 5) : '—'}</td>
         <td>${c.cliente_nombre || '—'}</td>
         <td>${c.paciente_nombre || '—'}</td>
+        <td>${c.veterinario_nombre || '—'}</td>
         <td>${c.motivo || '—'}</td>
         <td>
           <select onchange="cambiarEstadoCita(${c.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;">
@@ -254,7 +263,7 @@ function renderCitas() {
         </td>
         <td><button class="btn btn-danger btn-sm" onclick="eliminarCita(${c.id})">Eliminar</button></td>
       </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="7">No hay citas agendadas</td></tr>';
+    : '<tr class="empty-row"><td colspan="8">No hay citas agendadas</td></tr>';
 }
 async function poblarPacientesDeCliente(selectId, clienteId) {
   await Promise.all([asegurarClientesCargados(), asegurarPacientesCargados()]);
@@ -263,15 +272,10 @@ async function poblarPacientesDeCliente(selectId, clienteId) {
   sel.innerHTML = '<option value="">— Sin mascota —</option>' +
     lista.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
 }
-async function asegurarPacientesCargados() {
-  if (!_pacientes.length) {
-    const d = await api('/api/pacientes', { headers: authHeaders() });
-    _pacientes = d.ok ? d.pacientes : [];
-  }
-}
 async function abrirCrearCita() {
-  await asegurarClientesCargados();
+  await Promise.all([asegurarClientesCargados(), asegurarVeterinariosCargados()]);
   poblarSelectClientes('ci_cliente_id');
+  poblarSelectVeterinarios('ci_veterinario_id');
   document.getElementById('ci_paciente_id').innerHTML = '<option value="">— Selecciona un cliente primero —</option>';
   ['ci_fecha', 'ci_hora', 'ci_motivo', 'ci_notas'].forEach(id => document.getElementById(id).value = '');
   abrirModal('mCita');
@@ -280,6 +284,7 @@ async function guardarCita() {
   const body = {
     cliente_id: document.getElementById('ci_cliente_id').value || null,
     paciente_id: document.getElementById('ci_paciente_id').value || null,
+    veterinario_id: document.getElementById('ci_veterinario_id').value || null,
     fecha: document.getElementById('ci_fecha').value,
     hora: document.getElementById('ci_hora').value || null,
     motivo: document.getElementById('ci_motivo').value.trim(),
@@ -325,7 +330,6 @@ async function cargarHistoriaPaciente() {
   wrap.innerHTML = '<p style="color:var(--ink-soft);font-size:13.5px;">Cargando...</p>';
   const d = await api(`/api/historias/${id}`, { headers: authHeaders() });
   const historias = d.ok ? d.historias : [];
-
   const paciente = _pacientes.find(p => String(p.id) === String(id));
 
   wrap.innerHTML = `
@@ -345,6 +349,7 @@ async function cargarHistoriaPaciente() {
             ${h.temperatura ? `<div><strong>Temp:</strong> ${h.temperatura} °C</div>` : ''}
             ${h.diagnostico ? `<div><strong>Diagnóstico:</strong> ${h.diagnostico}</div>` : ''}
             ${h.tratamiento ? `<div><strong>Tratamiento:</strong> ${h.tratamiento}</div>` : ''}
+            ${h.medicamentos ? `<div><strong>Medicamentos:</strong> ${h.medicamentos}</div>` : ''}
             ${h.recomendaciones ? `<div><strong>Recomendaciones:</strong> ${h.recomendaciones}</div>` : ''}
             ${h.proximo_control ? `<div><strong>Próximo control:</strong> ${fmtFecha(h.proximo_control)}</div>` : ''}
           </div>
@@ -356,7 +361,7 @@ async function cargarHistoriaPaciente() {
 function abrirNuevaConsulta() {
   if (!_pacienteHistoriaActivo) return;
   document.getElementById('mConsultaSub').textContent = 'Registro de historia clínica';
-  ['hc_fecha', 'hc_proximo', 'hc_motivo', 'hc_anamnesis', 'hc_peso', 'hc_temp', 'hc_fc', 'hc_fr', 'hc_diagnostico', 'hc_tratamiento', 'hc_recomendaciones']
+  ['hc_fecha', 'hc_proximo', 'hc_motivo', 'hc_anamnesis', 'hc_peso', 'hc_temp', 'hc_fc', 'hc_fr', 'hc_diagnostico', 'hc_tratamiento', 'hc_medicamentos', 'hc_recomendaciones']
     .forEach(id => document.getElementById(id).value = '');
   document.getElementById('hc_fecha').value = new Date().toISOString().slice(0, 10);
   abrirModal('mConsulta');
@@ -374,6 +379,7 @@ async function guardarConsulta() {
     fr: document.getElementById('hc_fr').value.trim(),
     diagnostico: document.getElementById('hc_diagnostico').value.trim(),
     tratamiento: document.getElementById('hc_tratamiento').value.trim(),
+    medicamentos: document.getElementById('hc_medicamentos').value.trim(),
     recomendaciones: document.getElementById('hc_recomendaciones').value.trim(),
   };
   if (!body.fecha) { toast('La fecha es obligatoria', 'rojo'); return; }
@@ -479,7 +485,13 @@ function renderVentas() {
         <td>${v.paciente_nombre || '—'}</td>
         <td><strong>${fmtMoney(v.total)}</strong></td>
         <td><span class="badge ${v.estado_pago === 'pagado' ? 'b-primary' : 'b-accent'}">${v.estado_pago}</span></td>
-        <td><button class="btn btn-danger btn-sm" onclick="eliminarVenta(${v.id})">Eliminar</button></td>
+        <td>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
+            ${v.estado_pago !== 'pagado' ? `<button class="btn btn-primary btn-sm" onclick="registrarPago(${v.id})">Registrar pago</button>` : ''}
+            <button class="btn btn-danger btn-sm" onclick="eliminarVenta(${v.id})">Eliminar</button>
+          </div>
+        </td>
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="6">Aún no tienes ventas registradas</td></tr>';
 }
@@ -488,6 +500,7 @@ async function abrirCrearVenta() {
   poblarSelectClientes('ve_cliente_id');
   document.getElementById('ve_paciente_id').innerHTML = '<option value="">—</option>';
   document.getElementById('ve_descuento').value = 0;
+  document.getElementById('ve_estado_pago').value = 'pagado';
   document.getElementById('ve_item_nombre').value = '';
   document.getElementById('ve_item_precio').value = '';
   _itemsVenta = [];
@@ -541,7 +554,6 @@ function renderItemsVenta() {
         <button type="button" class="btn btn-danger btn-sm" onclick="quitarItemVenta(${i})">✕</button>
       </div>`).join('')
     : '<p style="color:var(--ink-soft);font-size:13px;">Aún no has agregado productos o servicios</p>';
-
   const subtotal = _itemsVenta.reduce((a, it) => a + it.precio * it.cantidad, 0);
   const descuento = Number(document.getElementById('ve_descuento').value || 0);
   const total = Math.max(subtotal - descuento, 0);
@@ -555,7 +567,7 @@ async function guardarVenta() {
     items: _itemsVenta,
     descuento: document.getElementById('ve_descuento').value || 0,
     metodo_pago: document.getElementById('ve_metodo').value,
-    estado_pago: 'pagado',
+    estado_pago: document.getElementById('ve_estado_pago').value,
   };
   const d = await api('/api/ventas', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
@@ -570,7 +582,30 @@ async function eliminarVenta(id) {
   toast('Venta eliminada', 'verde');
   cargarVentas();
 }
-
+async function registrarPago(id) {
+  const d = await api(`/api/ventas/${id}/pago`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({}) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Pago registrado', 'verde');
+  cargarVentas();
+}
+function verComprobante(id) {
+  const v = _ventas.find(x => x.id === id); if (!v) return;
+  let items = [];
+  try { items = typeof v.items_json === 'string' ? JSON.parse(v.items_json) : (v.items_json || []); } catch (e) { items = []; }
+  document.getElementById('cp_contenido').innerHTML = `
+    <p class="modal-sub">${fmtFecha(v.created_at)} — ${v.cliente_nombre || 'Sin cliente'}${v.paciente_nombre ? ' · ' + v.paciente_nombre : ''}</p>
+    <div style="margin:14px 0;">
+      ${items.map(it => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+        <span>${it.nombre} ${it.cantidad > 1 ? '× ' + it.cantidad : ''}</span><span>${fmtMoney(it.precio * (it.cantidad || 1))}</span>
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>Subtotal</span><span>${fmtMoney(v.subtotal)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>Descuento</span><span>-${fmtMoney(v.descuento)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-weight:800;font-size:16px;margin-top:6px;"><span>Total</span><span>${fmtMoney(v.total)}</span></div>
+    <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">Método: ${v.metodo_pago} — Estado: ${v.estado_pago}</p>
+  `;
+  abrirModal('mComprobante');
+}
 
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD "INICIO" — resumen rediseñado
@@ -598,13 +633,10 @@ async function cargarResumen() {
       </div>`).join('')
     : '<p style="color:var(--ink-soft);font-size:13px;">No hay más citas para hoy.</p>';
 
-  const alertBox = document.getElementById('inicioAlertas');
   let alertHtml = '';
   if (d.stockBajo > 0) alertHtml += `<div class="alert-item">📦 ${d.stockBajo} producto(s) con stock bajo</div>`;
   if (d.enEspera > 0) alertHtml += `<div class="alert-item">⏳ ${d.enEspera} paciente(s) en espera</div>`;
   document.getElementById('inicioAlertas').innerHTML = alertHtml || '<p style="color:var(--ink-soft);font-size:13px;">Sin alertas por ahora.</p>';
-
-  document.getElementById('st-clientes')?.remove();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -645,8 +677,6 @@ document.addEventListener('click', (e) => {
 // FICHA DEL PACIENTE — centro conector
 // ══════════════════════════════════════════════════════════════
 let _fpPacienteActivo = null;
-let _fpTabActual = 'resumen';
-
 async function abrirFichaPaciente(id) {
   await asegurarPacientesCargados();
   _fpPacienteActivo = _pacientes.find(p => p.id === id);
@@ -654,20 +684,16 @@ async function abrirFichaPaciente(id) {
   document.getElementById('fp_nombre').textContent = _fpPacienteActivo.nombre;
   document.getElementById('fp_sub').textContent = `${_fpPacienteActivo.especie || ''} ${_fpPacienteActivo.raza ? '· ' + _fpPacienteActivo.raza : ''} — Tutor: ${_fpPacienteActivo.cliente_nombre}`;
   document.getElementById('fp_avatar').innerHTML = _fpPacienteActivo.foto_url
-  ? `<img src="${_fpPacienteActivo.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;">`
-  : (_fpPacienteActivo.especie?.toLowerCase().includes('gat') ? '🐱' : '🐶');
+    ? `<img src="${_fpPacienteActivo.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;">`
+    : (_fpPacienteActivo.especie?.toLowerCase().includes('gat') ? '🐱' : '🐶');
   cambiarTabFicha('resumen');
   abrirModal('mFichaPaciente');
 }
-
 function cambiarTabFicha(tab) {
-  _fpTabActual = tab;
   document.getElementById('fp_tab_resumen').classList.toggle('active', tab === 'resumen');
   document.getElementById('fp_tab_historia').classList.toggle('active', tab === 'historia');
-  if (tab === 'resumen') renderFichaResumen();
-  else renderFichaHistoria();
+  if (tab === 'resumen') renderFichaResumen(); else renderFichaHistoria();
 }
-
 function renderFichaResumen() {
   const p = _fpPacienteActivo;
   document.getElementById('fp_contenido').innerHTML = `
@@ -681,7 +707,6 @@ function renderFichaResumen() {
     ${p.observaciones ? `<div class="ficha-dr-box"><div class="ficha-dr-label">📋 Observaciones</div><div class="ficha-dr-txt">${p.observaciones}</div></div>` : ''}
   `;
 }
-
 async function renderFichaHistoria() {
   const box = document.getElementById('fp_contenido');
   box.innerHTML = 'Cargando...';
@@ -696,7 +721,6 @@ async function renderFichaHistoria() {
       </div>
     </div>`).join('') : '<p style="color:var(--ink-soft);font-size:13px;">Sin consultas registradas.</p>';
 }
-
 function fpNuevaConsulta() {
   cerrarModal('mFichaPaciente');
   ir('historia');
@@ -704,7 +728,6 @@ function fpNuevaConsulta() {
   cargarHistoriaPaciente();
   abrirNuevaConsulta();
 }
-
 function fpNuevaVenta() {
   cerrarModal('mFichaPaciente');
   ir('ventas');
@@ -720,54 +743,33 @@ function fpNuevaVenta() {
 // FOTO DE MASCOTA (Cloudinary)
 // ══════════════════════════════════════════════════════════════
 let _pacienteFotoFile = null;
-
 function previsualizarFotoPaciente(e) {
   const file = e.target.files[0];
   if (!file) return;
   _pacienteFotoFile = file;
   const reader = new FileReader();
   reader.onload = ev => {
-    document.getElementById('pa_foto_preview_box').innerHTML =
-      `<img src="${ev.target.result}" class="pac-foto-preview">`;
+    document.getElementById('pa_foto_preview_box').innerHTML = `<img src="${ev.target.result}" class="pac-foto-preview">`;
   };
   reader.readAsDataURL(file);
 }
-
 async function subirFotoPacienteSiHay(pacienteId) {
   if (!_pacienteFotoFile) return true;
   const fd = new FormData();
   fd.append('foto', _pacienteFotoFile);
   try {
     const res = await fetch(API + `/api/pacientes/${pacienteId}/foto`, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + getToken() },
-      body: fd
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd
     });
     const data = await res.json();
     _pacienteFotoFile = null;
-    if (!data.ok) {
-      toast('Error subiendo foto: ' + (data.error || 'desconocido'), 'rojo');
-      return false;
-    }
+    if (!data.ok) { toast('Error subiendo foto: ' + (data.error || 'desconocido'), 'rojo'); return false; }
     return true;
   } catch (e) {
     toast('Error de red subiendo la foto', 'rojo');
     _pacienteFotoFile = null;
     return false;
   }
-}
-
-
-// ══════════════════════════════════════════════════════════════
-// ROLES — control de acceso por tipo de personal
-// ══════════════════════════════════════════════════════════════
-const rolStaff = user?.rol_staff || null;
-const esPropietario = !rolStaff || rolStaff === 'propietario';
-const esVeterinario = rolStaff === 'veterinario';
-const esRecepcion = rolStaff === 'recepcion';
-
-if (!esPropietario) {
-  document.querySelector('.nav-item[data-sec="personal"]')?.remove();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -779,17 +781,14 @@ const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En 
 const flujoEstados = ['llegada','triaje','espera','consulta','diagnostico','tratamiento','venta','seguimiento','cerrada'];
 
 async function cargarAtenciones() {
+  await asegurarVeterinariosCargados();
   const d = await api('/api/atenciones', { headers: authHeaders() });
   _atenciones = d.ok ? d.atenciones : [];
   renderAtenciones();
 }
-
 function renderAtenciones() {
   const box = document.getElementById('atencionLista');
-  if (!_atenciones.length) {
-    box.innerHTML = '<p style="color:var(--ink-soft);font-size:13.5px;">No hay pacientes en atención activa.</p>';
-    return;
-  }
+  if (!_atenciones.length) { box.innerHTML = '<p style="color:var(--ink-soft);font-size:13.5px;">No hay pacientes en atención activa.</p>'; return; }
   box.innerHTML = _atenciones.map(a => {
     const idx = flujoEstados.indexOf(a.estado);
     const siguiente = flujoEstados[idx + 1];
@@ -800,7 +799,7 @@ function renderAtenciones() {
         <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
           <span class="badge b-${a.prioridad}">${prioridadLabel[a.prioridad]}</span>
           <span class="badge b-grey">${estadoAtencionLabel[a.estado]}</span>
-          ${a.staff_nombre ? `<span class="badge b-primary">${a.staff_nombre}</span>` : ''}
+          ${a.veterinario_nombre ? `<span class="badge b-primary">${a.veterinario_nombre}</span>` : `<select onchange="asignarVeterinario(${a.id}, this.value)" style="padding:2px 6px;border-radius:6px;border:1px solid var(--border);font-size:11.5px;">${['<option value="">Asignar vet.</option>'].concat(_veterinarios.map(v=>`<option value="${v.id}">${v.nombre}</option>`)).join('')}</select>`}
         </div>
       </div>
       <div style="display:flex;gap:8px;">
@@ -811,29 +810,35 @@ function renderAtenciones() {
     </div>`;
   }).join('');
 }
-
+async function asignarVeterinario(id, veterinario_id) {
+  if (!veterinario_id) return;
+  const d = await api(`/api/atenciones/${id}/asignar`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ veterinario_id }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Veterinario asignado', 'verde');
+  cargarAtenciones();
+}
 async function avanzarAtencion(id, estado) {
   const d = await api(`/api/atenciones/${id}/estado`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ estado }) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
   toast('Atención actualizada', 'verde');
   cargarAtenciones();
 }
-
 async function abrirCrearAtencion() {
-  await asegurarClientesCargados();
+  await Promise.all([asegurarClientesCargados(), asegurarVeterinariosCargados()]);
   poblarSelectClientes('at_cliente_id');
+  poblarSelectVeterinarios('at_veterinario_id');
   document.getElementById('at_paciente_id').innerHTML = '<option value="">— Selecciona un cliente primero —</option>';
   document.getElementById('at_origen').value = 'sin_cita';
   document.getElementById('at_prioridad').value = 'normal';
   abrirModal('mAtencion');
 }
-
 async function guardarAtencion() {
   const cliente_id = document.getElementById('at_cliente_id').value;
   const paciente_id = document.getElementById('at_paciente_id').value;
   if (!cliente_id || !paciente_id) { toast('Selecciona cliente y mascota', 'rojo'); return; }
   const body = {
     cliente_id, paciente_id,
+    veterinario_id: document.getElementById('at_veterinario_id').value || null,
     origen: document.getElementById('at_origen').value,
     prioridad: document.getElementById('at_prioridad').value,
   };
@@ -845,51 +850,134 @@ async function guardarAtencion() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// PERSONAL (staff)
+// PERSONAL — el propietario administra a su equipo
 // ══════════════════════════════════════════════════════════════
-let _staffList = [];
-const staffRolLabel = { propietario: 'Propietario', veterinario: 'Veterinario', recepcion: 'Recepción' };
-
-async function cargarStaff() {
-  const d = await api('/api/staff', { headers: authHeaders() });
-  _staffList = d.ok ? d.staff : [];
-  document.getElementById('tbStaff').innerHTML = _staffList.length
-    ? _staffList.map(s => `<tr>
-        <td><strong>${s.nombre}</strong></td>
+let _personal = [];
+const rolPersonalLabel = { propietario: 'Propietario', veterinario: 'Veterinario', recepcion: 'Recepción' };
+async function cargarPersonal() {
+  const d = await api('/api/personal', { headers: authHeaders() });
+  _personal = d.ok ? d.personal : [];
+  document.getElementById('tbStaff').innerHTML = _personal.length
+    ? _personal.map(s => `<tr>
+        <td><strong>${s.nombre || '—'}</strong></td>
         <td>${s.email}</td>
-        <td><span class="badge b-primary">${staffRolLabel[s.rol] || s.rol}</span></td>
-        <td><button class="btn btn-danger btn-sm" onclick="eliminarStaff(${s.id})">Eliminar</button></td>
+        <td><span class="badge b-primary">${rolPersonalLabel[s.rol] || s.rol}</span></td>
+        <td>${s.activo ? '<span class="badge b-primary">Activa</span>' : '<span class="badge b-danger">Desactivada</span>'}</td>
+        <td>${s.rol === 'propietario' ? '' : `<button class="btn btn-ghost btn-sm" onclick="abrirEditarPersonal(${s.id})">Editar</button>`}</td>
       </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="4">Aún no has agregado personal</td></tr>';
+    : '<tr class="empty-row"><td colspan="5">Sin personal registrado</td></tr>';
 }
-
-function abrirCrearStaff() {
-  ['st_nombre','st_email','st_password'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('st_rol').value = 'veterinario';
+function abrirEditarPersonal(id) {
+  const s = _personal.find(x => x.id === id); if (!s) return;
+  document.getElementById('st_id').value = s.id;
+  document.getElementById('mStaffSub').textContent = `${rolPersonalLabel[s.rol]} — ${s.email}`;
+  document.getElementById('st_nombre').value = s.nombre || '';
+  document.getElementById('st_password').value = '';
+  document.getElementById('st_activo').value = s.activo ? '1' : '0';
   abrirModal('mStaff');
 }
-
-async function guardarStaff() {
+async function guardarPersonal() {
+  const id = document.getElementById('st_id').value;
   const body = {
     nombre: document.getElementById('st_nombre').value.trim(),
-    email: document.getElementById('st_email').value.trim(),
-    password: document.getElementById('st_password').value,
-    rol: document.getElementById('st_rol').value,
+    activo: document.getElementById('st_activo').value,
+    password: document.getElementById('st_password').value || undefined,
   };
-  if (!body.nombre || !body.email || !body.password) { toast('Completa todos los campos', 'rojo'); return; }
-  const d = await api('/api/staff', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  const d = await api(`/api/personal/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Personal agregado', 'verde');
+  toast('Personal actualizado', 'verde');
   cerrarModal('mStaff');
-  cargarStaff();
+  cargarPersonal();
 }
 
-async function eliminarStaff(id) {
-  if (!confirm('¿Eliminar este acceso de personal?')) return;
-  const d = await api(`/api/staff/${id}`, { method: 'DELETE', headers: authHeaders() });
+// ══════════════════════════════════════════════════════════════
+// CAJA
+// ══════════════════════════════════════════════════════════════
+async function cargarCaja() {
+  const desde = document.getElementById('cj_desde').value;
+  const hasta = document.getElementById('cj_hasta').value;
+  const qs = desde && hasta ? `?desde=${desde}&hasta=${hasta}` : '';
+  const d = await api('/api/caja' + qs, { headers: authHeaders() });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Personal eliminado', 'verde');
-  cargarStaff();
+  if (!desde) document.getElementById('cj_desde').value = d.desde;
+  if (!hasta) document.getElementById('cj_hasta').value = d.hasta;
+  document.getElementById('cj-total').textContent = fmtMoney(d.total);
+  document.getElementById('cj-cantidad').textContent = d.cantidad;
+  document.getElementById('cj-pendiente').textContent = fmtMoney(d.pendiente?.total || 0);
+  document.getElementById('tbCajaMetodo').innerHTML = d.porMetodo.length
+    ? d.porMetodo.map(m => `<tr><td>${m.metodo}</td><td>${m.cantidad}</td><td>${fmtMoney(m.total)}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="3">Sin movimientos en este rango</td></tr>';
+  document.getElementById('tbCajaDia').innerHTML = (d.porDia || []).length
+    ? d.porDia.map(x => `<tr><td>${fmtFecha(x.dia)}</td><td>${x.cantidad}</td><td>${fmtMoney(x.total)}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="3">Sin datos</td></tr>';
+}
+
+// ══════════════════════════════════════════════════════════════
+// REPORTES
+// ══════════════════════════════════════════════════════════════
+async function cargarReportes() {
+  const desde = document.getElementById('rp_desde').value;
+  const hasta = document.getElementById('rp_hasta').value;
+  const qs = desde && hasta ? `?desde=${desde}&hasta=${hasta}` : '';
+  const d = await api('/api/reportes' + qs, { headers: authHeaders() });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  if (!desde) document.getElementById('rp_desde').value = d.desde;
+  if (!hasta) document.getElementById('rp_hasta').value = d.hasta;
+  document.getElementById('rp-consultas').textContent = d.consultas ?? '—';
+  document.getElementById('tbRepCitas').innerHTML = d.citasPorEstado.length
+    ? d.citasPorEstado.map(c => `<tr><td>${c.estado}</td><td>${c.total}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="2">Sin datos</td></tr>';
+  document.getElementById('tbRepVet').innerHTML = (d.porVeterinario || []).length
+    ? d.porVeterinario.map(v => `<tr><td>${v.veterinario}</td><td>${v.total}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="2">Sin datos</td></tr>';
+  document.getElementById('tbRepProductos').innerHTML = (d.topProductos || []).length
+    ? d.topProductos.map(p => `<tr><td>${p.nombre}</td><td>${p.cantidad}</td><td>${fmtMoney(p.total)}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="3">Sin datos</td></tr>';
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONFIGURACIÓN
+// ══════════════════════════════════════════════════════════════
+async function cargarConfiguracion() {
+  const d = await api('/api/configuracion', { headers: authHeaders() });
+  if (!d.ok) return;
+  document.getElementById('cf_nombre').value = d.configuracion.nombre_clinica || '';
+  document.getElementById('cf_plan').value = d.configuracion.plan_nombre || 'Sin plan';
+  document.getElementById('cf_pass_actual').value = '';
+  document.getElementById('cf_pass_nueva').value = '';
+}
+async function guardarConfiguracion() {
+  const nombre_clinica = document.getElementById('cf_nombre').value.trim();
+  if (!nombre_clinica) { toast('El nombre de la clínica es obligatorio', 'rojo'); return; }
+  const d = await api('/api/configuracion', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ nombre_clinica }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Clínica actualizada', 'verde');
+  document.getElementById('clinicaTag').textContent = user.plan_nombre || nombre_clinica;
+}
+async function cambiarPassword() {
+  const actual = document.getElementById('cf_pass_actual').value;
+  const nueva = document.getElementById('cf_pass_nueva').value;
+  if (!actual || !nueva) { toast('Completa ambos campos', 'rojo'); return; }
+  const d = await api('/api/auth/password', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ actual, nueva }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Contraseña actualizada', 'verde');
+  document.getElementById('cf_pass_actual').value = '';
+  document.getElementById('cf_pass_nueva').value = '';
+}
+async function descargarRespaldo() {
+  try {
+    const res = await fetch(API + '/api/respaldo', { headers: authHeaders() });
+    const data = await res.json();
+    if (!data.ok) { toast(data.error || 'Error generando el respaldo', 'rojo'); return; }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `respaldo-vetcore-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast('Error de red generando el respaldo', 'rojo');
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
