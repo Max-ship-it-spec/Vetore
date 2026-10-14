@@ -398,34 +398,120 @@ async function eliminarConsulta(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// INVENTARIO
+// INVENTARIO (catálogo, cargas, descargas, stock por almacén)
 // ══════════════════════════════════════════════════════════════
 let _productos = [];
+let _almacenes = [];
+let _sdTipo = 'carga';
+let _sdItems = [];
+
+function invTab(t) {
+  document.querySelectorAll('.inv-tab').forEach(b => b.classList.toggle('active', b.dataset.inv === t));
+  document.querySelectorAll('.inv-view').forEach(v => v.classList.toggle('active', v.id === 'inv-' + t));
+  if (t === 'catalogo') cargarProductos();
+  if (t === 'descargas') cargarStockDocs('descarga');
+  if (t === 'cargas') cargarStockDocs('carga');
+  if (t === 'almacen') cargarStockAlmacen();
+}
+async function cargarAlmacenes() {
+  const d = await api('/api/almacenes', { headers: authHeaders() });
+  _almacenes = d.ok ? d.almacenes : [];
+}
+
+// ── Catálogo ──
+function llenarFiltro(selId, label, valores) {
+  const sel = document.getElementById(selId);
+  const actual = sel.value;
+  sel.innerHTML = `<option value="">${label}</option>` + valores.map(v => `<option value="${v}">${v}</option>`).join('');
+  sel.value = valores.includes(actual) ? actual : '';
+}
+const unicos = (k) => [...new Set(_productos.map(p => p[k]).filter(Boolean))].sort();
 async function cargarProductos() {
   const d = await api('/api/productos', { headers: authHeaders() });
   _productos = d.ok ? d.productos : [];
+  llenarFiltro('inv_f_proveedor', 'Proveedor...', unicos('proveedor'));
+  llenarFiltro('inv_f_linea', 'Línea...', unicos('linea'));
+  llenarFiltro('inv_f_categoria', 'Categorías...', unicos('categoria'));
+  [['dl_proveedor', 'proveedor'], ['dl_linea', 'linea'], ['dl_categoria', 'categoria']].forEach(([id, k]) => {
+    document.getElementById(id).innerHTML = unicos(k).map(v => `<option value="${v}">`).join('');
+  });
   renderProductos();
 }
-function renderProductos() {
-  document.getElementById('tbProductos').innerHTML = _productos.length
-    ? _productos.map(p => `<tr>
-        <td><strong>${p.nombre}</strong></td>
-        <td>${p.categoria || '—'}</td>
-        <td>${fmtMoney(p.precio_venta)}</td>
-        <td>${p.stock <= p.stock_minimo ? `<span class="badge b-danger">${p.stock}</span>` : p.stock}</td>
-        <td>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost btn-sm" onclick="abrirEditarProducto(${p.id})">Editar</button>
-            <button class="btn btn-danger btn-sm" onclick="eliminarProducto(${p.id})">Eliminar</button>
-          </div>
-        </td>
-      </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="5">Aún no tienes productos en el inventario</td></tr>';
+function estadoStock(p) {
+  if (Number(p.stock) <= 0) return 'agotado';
+  if (Number(p.stock) <= Number(p.stock_minimo)) return 'bajo';
+  return 'ok';
 }
+// Pide a Cloudinary una versión pequeña y optimizada (más rápida que la original)
+function thumb(url, size) {
+  return url && url.includes('/upload/')
+    ? url.replace('/upload/', `/upload/w_${size},h_${size},c_fill,q_auto,f_auto/`)
+    : url;
+}
+function codigoSis(p) { return 'P' + String(p.id).padStart(5, '0'); }
+function renderProductos() {
+  const q = document.getElementById('inv_buscar').value.trim().toLowerCase();
+  const fp = document.getElementById('inv_f_proveedor').value;
+  const fl = document.getElementById('inv_f_linea').value;
+  const fs = document.getElementById('inv_f_stock').value;
+  const fc = document.getElementById('inv_f_categoria').value;
+  const lista = _productos.filter(p =>
+    (!q || [p.nombre, p.codigo_barras, p.marca].some(x => String(x || '').toLowerCase().includes(q))) &&
+    (!fp || p.proveedor === fp) && (!fl || p.linea === fl) && (!fc || p.categoria === fc) &&
+    (!fs || estadoStock(p) === fs));
+  document.getElementById('tbProductos').innerHTML = lista.length
+    ? lista.map(p => {
+        const es = estadoStock(p);
+        const stockHtml = `<span class="badge ${es === 'ok' ? 'b-primary' : es === 'bajo' ? 'b-accent' : 'b-danger'}">${p.stock}</span>`;
+        const estado = !p.activo ? '<span class="badge b-grey">Inactivo</span>'
+          : es === 'agotado' ? '<span class="badge b-danger">Agotado</span>'
+          : es === 'bajo' ? '<span class="badge b-accent">Stock bajo</span>'
+          : '<span class="badge b-primary">Disponible</span>';
+        return `<tr>
+          <td>${codigoSis(p)}</td>
+          <td>
+            <div class="prod-cell">
+              ${p.foto_url
+                ? `<a href="${p.foto_url}" target="_blank" title="Ver foto completa"><img src="${thumb(p.foto_url, 104)}" class="prod-foto" loading="lazy"></a>`
+                : `<span class="prod-foto-ph">📦</span>`}
+              <span class="prod-nombre">${p.nombre}</span>
+            </div>
+          </td>
+          <td>${p.marca || '—'}</td>
+          <td>${p.proveedor || '—'}</td>
+          <td>${p.linea || '—'}</td>
+          <td>${fmtMoney(p.precio_venta)}</td>
+          <td>${stockHtml}</td>
+          <td>${estado}</td>
+          <td><div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="abrirEditarProducto(${p.id})">Editar</button>
+            <button class="btn btn-ghost btn-sm" onclick="abrirEditarProducto(${p.id});prTab('kardex')">Kardex</button>
+            <button class="btn btn-danger btn-sm" onclick="eliminarProducto(${p.id})">Eliminar</button>
+          </div></td>
+        </tr>`;
+      }).join('')
+    : '<tr class="empty-row"><td colspan="10" style="text-align:center;">Sin productos en el inventario</td></tr>';
+}
+function limpiarFiltrosInv() {
+  ['inv_buscar', 'inv_f_proveedor', 'inv_f_linea', 'inv_f_stock', 'inv_f_categoria'].forEach(id => document.getElementById(id).value = '');
+  renderProductos();
+}
+
+// ── Modal producto ──
+const PR_CAMPOS = ['nombre', 'marca', 'presentacion', 'contenido', 'proveedor', 'linea', 'categoria', 'subcategoria', 'precio_compra', 'precio_venta', 'stock_minimo', 'stock_maximo', 'frecuencia'];
 function abrirCrearProducto() {
   document.getElementById('mProductoTitulo').textContent = 'Nuevo producto';
   document.getElementById('pr_id').value = '';
-  ['pr_nombre', 'pr_categoria', 'pr_precio_venta', 'pr_precio_compra', 'pr_stock', 'pr_stock_minimo'].forEach(id => document.getElementById(id).value = '');
+  PR_CAMPOS.forEach(c => document.getElementById('pr_' + c).value = '');
+  document.getElementById('pr_unidad').value = 'UND';
+  document.getElementById('pr_disponible').value = '1';
+  document.getElementById('pr_activo').value = '1';
+  document.getElementById('pr_stock_inicial').value = 0;
+  document.getElementById('pr_grp_actual').style.display = 'none';
+  document.getElementById('pr_grp_inicial').style.display = '';
+    document.getElementById('pr_foto_preview_box').innerHTML = '<div class="prod-foto-lg-ph">📦</div>';
+  _productoFotoFile = null;
+  prTab('editar');
   abrirModal('mProducto');
 }
 function abrirEditarProducto(id) {
@@ -433,31 +519,213 @@ function abrirEditarProducto(id) {
   document.getElementById('mProductoTitulo').textContent = 'Editar producto';
   document.getElementById('pr_id').value = p.id;
   document.getElementById('pr_nombre').value = p.nombre || '';
+  document.getElementById('pr_marca').value = p.marca || '';
+  document.getElementById('pr_presentacion').value = p.presentacion || '';
+  document.getElementById('pr_contenido').value = p.contenido || '';
+  document.getElementById('pr_unidad').value = p.unidad_medida || 'UND';
+  document.getElementById('pr_proveedor').value = p.proveedor || '';
+  document.getElementById('pr_linea').value = p.linea || '';
   document.getElementById('pr_categoria').value = p.categoria || '';
-  document.getElementById('pr_precio_venta').value = p.precio_venta || '';
-  document.getElementById('pr_precio_compra').value = p.precio_compra || '';
-  document.getElementById('pr_stock').value = p.stock ?? '';
+  document.getElementById('pr_subcategoria').value = p.subcategoria || '';
+  document.getElementById('pr_precio_compra').value = p.precio_compra ?? '';
+  document.getElementById('pr_precio_venta').value = p.precio_venta ?? '';
+  document.getElementById('pr_stock_actual').value = p.stock ?? 0;
   document.getElementById('pr_stock_minimo').value = p.stock_minimo ?? '';
+  document.getElementById('pr_stock_maximo').value = p.stock_maximo ?? '';
+  document.getElementById('pr_frecuencia').value = p.frecuencia_dias ?? '';
+  document.getElementById('pr_disponible').value = p.disponible_venta ? '1' : '0';
+  document.getElementById('pr_activo').value = p.activo ? '1' : '0';
+  document.getElementById('pr_grp_actual').style.display = '';
+  document.getElementById('pr_grp_inicial').style.display = 'none';
+    document.getElementById('pr_foto_preview_box').innerHTML = p.foto_url
+    ? `<img src="${thumb(p.foto_url, 240)}" class="prod-foto-lg">`
+    : '<div class="prod-foto-lg-ph">📦</div>';
+  _productoFotoFile = null;
+  prTab('editar');
   abrirModal('mProducto');
 }
-async function guardarProducto() {
+
+
+
+let _kardexMov = [];
+let _kardexProd = null;
+
+async function prTab(t) {
+  document.getElementById('pr_tab_editar').classList.toggle('active', t === 'editar');
+  document.getElementById('pr_tab_kardex').classList.toggle('active', t === 'kardex');
+  document.getElementById('pr_panel_editar').style.display = t === 'editar' ? '' : 'none';
+  document.getElementById('pr_panel_kardex').style.display = t === 'kardex' ? '' : 'none';
+  if (t !== 'kardex') return;
+
   const id = document.getElementById('pr_id').value;
-  const body = {
-    nombre: document.getElementById('pr_nombre').value.trim(),
-    categoria: document.getElementById('pr_categoria').value.trim(),
-    precio_venta: document.getElementById('pr_precio_venta').value || 0,
-    precio_compra: document.getElementById('pr_precio_compra').value || 0,
-    stock: document.getElementById('pr_stock').value || 0,
-    stock_minimo: document.getElementById('pr_stock_minimo').value || 0,
+  const tb = document.getElementById('tbKardex');
+  if (!id) {
+    document.getElementById('kx_head').innerHTML = '';
+    document.getElementById('kx_stats').innerHTML = '';
+    tb.innerHTML = '<tr class="empty-row"><td colspan="8">Guarda el producto para ver su kardex</td></tr>';
+    return;
+  }
+  _kardexProd = _productos.find(x => String(x.id) === String(id)) || null;
+  tb.innerHTML = '<tr class="empty-row"><td colspan="8">Cargando...</td></tr>';
+  const d = await api(`/api/productos/${id}/kardex`, { headers: authHeaders() });
+  _kardexMov = (d.ok ? d.movimientos : []).slice()
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // llenar filtro de almacenes
+  const almacenes = [...new Set(_kardexMov.map(m => m.almacen_nombre).filter(Boolean))];
+  const sel = document.getElementById('kx_f_almacen');
+  sel.innerHTML = '<option value="">Todos los almacenes</option>' + almacenes.map(a => `<option>${a}</option>`).join('');
+  document.getElementById('kx_f_tipo').value = '';
+
+  renderKardexResumen();
+  renderKardex();
+}
+
+function kxFechaHora(v) {
+  const d = new Date(v);
+  if (isNaN(d)) return fmtFecha(v);
+  return d.toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' }) +
+    '<small>' + d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) + '</small>';
+}
+
+function renderKardexResumen() {
+  const p = _kardexProd;
+  const entradas = _kardexMov.filter(m => m.cantidad > 0).reduce((a, m) => a + Number(m.cantidad), 0);
+  const salidas = _kardexMov.filter(m => m.cantidad < 0).reduce((a, m) => a + Math.abs(Number(m.cantidad)), 0);
+  const ultimo = _kardexMov[0];
+
+  document.getElementById('kx_head').innerHTML = p ? `
+    <div class="kx-prod">
+      ${p.foto_url ? `<img src="${thumb(p.foto_url, 104)}" class="prod-foto">` : '<span class="prod-foto-ph">📦</span>'}
+      <div>
+        <div class="kx-prod-nombre">${p.nombre}</div>
+        <div class="kx-prod-meta">${codigoSis(p)}${p.marca ? ' · ' + p.marca : ''}${p.proveedor ? ' · ' + p.proveedor : ''}${p.linea ? ' · ' + p.linea : ''}</div>
+      </div>
+    </div>` : '';
+
+  const stock = p ? Number(p.stock) : (ultimo ? Number(ultimo.saldo) : 0);
+  const valor = p ? stock * Number(p.precio_compra || 0) : 0;
+  const es = p ? estadoStock(p) : 'ok';
+  const cls = es === 'ok' ? 'ok' : es === 'bajo' ? 'warn' : 'bad';
+
+  document.getElementById('kx_stats').innerHTML = `
+    <div class="kx-stat ${cls}"><span>Stock actual</span><strong>${stock}</strong>
+      <small>${p ? `Mín. ${p.stock_minimo ?? '—'} · Máx. ${p.stock_maximo ?? '—'}` : ''}</small></div>
+    <div class="kx-stat"><span>Total entradas</span><strong class="in">+${entradas}</strong><small>unidades ingresadas</small></div>
+    <div class="kx-stat"><span>Total salidas</span><strong class="out">−${salidas}</strong><small>unidades egresadas</small></div>
+    <div class="kx-stat"><span>Valor en inventario</span><strong>${fmtMoney(valor)}</strong>
+      <small>${p ? `Compra ${fmtMoney(p.precio_compra || 0)} · Venta ${fmtMoney(p.precio_venta || 0)}` : ''}</small></div>
+    <div class="kx-stat"><span>Movimientos</span><strong>${_kardexMov.length}</strong>
+      <small>${ultimo ? 'Último: ' + fmtFecha(ultimo.created_at) : 'Sin movimientos'}</small></div>`;
+}
+
+function kardexFiltrado() {
+  const tipo = document.getElementById('kx_f_tipo').value;
+  const alm = document.getElementById('kx_f_almacen').value;
+  return _kardexMov.filter(m =>
+    (!tipo || (tipo === 'entrada' ? m.cantidad > 0 : m.cantidad < 0)) &&
+    (!alm || m.almacen_nombre === alm));
+}
+
+function renderKardex() {
+  const tb = document.getElementById('tbKardex');
+  const lista = kardexFiltrado();
+  document.getElementById('kx_count').textContent = `${lista.length} de ${_kardexMov.length} movimientos`;
+  tb.innerHTML = lista.length
+    ? lista.map(x => {
+        const ent = x.cantidad > 0, c = Math.abs(Number(x.cantidad));
+        return `<tr>
+          <td class="kx-fecha">${kxFechaHora(x.created_at)}</td>
+          <td><span class="kx-tipo ${ent ? 'in' : 'out'}">${ent ? '↓' : '↑'} ${x.tipo || (ent ? 'entrada' : 'salida')}</span></td>
+          <td>${x.almacen_nombre || '—'}</td>
+          <td class="kx-num in">${ent ? '+' + c : ''}</td>
+          <td class="kx-num out">${!ent ? '−' + c : ''}</td>
+          <td class="kx-num kx-saldo">${x.saldo}</td>
+          <td>${x.motivo || '—'}</td>
+          <td>${x.usuario_nombre || '—'}</td>
+        </tr>`;
+      }).join('')
+    : '<tr class="empty-row"><td colspan="8">Sin movimientos</td></tr>';
+}
+
+function exportarKardex() {
+  const lista = kardexFiltrado();
+  if (!lista.length) { toast('No hay movimientos para exportar'); return; }
+  const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const filas = [['Fecha', 'Tipo', 'Almacén', 'Cantidad', 'Saldo', 'Motivo', 'Usuario']]
+    .concat(lista.map(m => [new Date(m.created_at).toLocaleString('es-EC'), m.tipo, m.almacen_nombre, m.cantidad, m.saldo, m.motivo, m.usuario_nombre]));
+  const csv = '\ufeff' + filas.map(f => f.map(esc).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `kardex-${_kardexProd ? codigoSis(_kardexProd) : 'producto'}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+
+
+let _productoFotoFile = null;
+let _guardandoProducto = false;
+function previsualizarFotoProducto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  _productoFotoFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+        document.getElementById('pr_foto_preview_box').innerHTML = `<img src="${ev.target.result}" class="prod-foto-lg">`;
   };
-  if (!body.nombre) { toast('El nombre es obligatorio', 'rojo'); return; }
-  const d = await api(id ? `/api/productos/${id}` : '/api/productos', {
-    method: id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(body)
-  });
-  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Producto guardado', 'verde');
-  cerrarModal('mProducto');
-  cargarProductos();
+  reader.readAsDataURL(file);
+}
+async function subirFotoProductoSiHay(productoId) {
+  if (!_productoFotoFile) return true;
+  const fd = new FormData();
+  fd.append('foto', _productoFotoFile);
+  try {
+    const res = await fetch(API + `/api/productos/${productoId}/foto`, {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd
+    });
+    const data = await res.json();
+    _productoFotoFile = null;
+    if (!data.ok) { toast('Error subiendo foto: ' + (data.error || 'desconocido'), 'rojo'); return false; }
+    return true;
+  } catch (e) {
+    toast('Error de red subiendo la foto', 'rojo');
+    _productoFotoFile = null;
+    return false;
+  }
+}
+async function guardarProducto() {
+  if (_guardandoProducto) return;
+  const id = document.getElementById('pr_id').value;
+  const v = (c) => document.getElementById('pr_' + c).value.trim();
+  const body = {
+    nombre: v('nombre'), marca: v('marca'),
+    presentacion: v('presentacion'), contenido: v('contenido'), unidad_medida: v('unidad'),
+    proveedor: v('proveedor'), linea: v('linea'), categoria: v('categoria'), subcategoria: v('subcategoria'),
+    precio_compra: v('precio_compra') || 0, precio_venta: v('precio_venta') || 0,
+    stock_minimo: v('stock_minimo'), stock_maximo: v('stock_maximo'),
+    frecuencia_dias: v('frecuencia') || null,
+    disponible_venta: v('disponible'), activo: v('activo'),
+  };
+  if (!id) body.stock_inicial = v('stock_inicial') || 0;
+  if (!body.nombre || !body.linea || !body.categoria || body.stock_minimo === '' || body.stock_maximo === '') {
+    toast('Completa los campos obligatorios (*)', 'rojo'); return;
+  }
+  _guardandoProducto = true;
+  const btn = document.getElementById('pr_btn_guardar');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    const d = await api(id ? `/api/productos/${id}` : '/api/productos', {
+      method: id ? 'PUT' : 'POST', headers: authHeaders(), body: JSON.stringify(body)
+    });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    const fotoOk = await subirFotoProductoSiHay(id || d.id);
+    cerrarModal('mProducto');
+    cargarProductos();
+    if (fotoOk !== false) toast('Producto guardado', 'verde');
+  } finally {
+    _guardandoProducto = false;
+    btn.disabled = false; btn.textContent = '+ Guardar cambios';
+  }
 }
 async function eliminarProducto(id) {
   if (!confirm('¿Eliminar este producto del inventario?')) return;
@@ -467,6 +735,165 @@ async function eliminarProducto(id) {
   cargarProductos();
 }
 
+// ── Cargas / Descargas ──
+async function cargarStockDocs(tipo) {
+  const tb = document.getElementById(tipo === 'carga' ? 'tbCargas' : 'tbDescargas');
+  const d = await api(`/api/stock-documentos?tipo=${tipo}`, { headers: authHeaders() });
+  const docs = d.ok ? d.documentos : [];
+  tb.innerHTML = docs.length
+    ? docs.map(x => `<tr>
+        <td>${x.numero}</td><td>${fmtFecha(x.created_at)}</td><td>${x.motivo || '—'}</td>
+        <td>${x.almacen_nombre || '—'}</td><td>${x.responsable || '—'}</td>
+        <td>${tipo === 'carga' ? fmtMoney(x.total) : (x.registrado_por || '—')}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="verStockDoc(${x.id})">Ver</button></td>
+      </tr>`).join('')
+    : '<tr class="empty-row"><td colspan="7" style="text-align:center;">Sin registros</td></tr>';
+}
+async function abrirStockDoc(tipo) {
+  _sdTipo = tipo; _sdItems = [];
+  await Promise.all([cargarAlmacenes(), cargarProductos()]);
+  document.getElementById('sd_titulo').textContent = tipo === 'carga' ? 'Cargar stock' : 'Descargar stock';
+  document.getElementById('sd_lbl_almacen').textContent = tipo === 'carga' ? 'Almacén destino' : 'Almacén origen';
+  document.getElementById('sd_almacen').innerHTML = _almacenes.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('');
+  const ops = tipo === 'carga' ? ['Compra a proveedor', 'Corrección', 'Donación', 'Otro'] : ['Corrección', 'Merma / vencido', 'Consumo interno', 'Otro'];
+  document.getElementById('sd_operacion').innerHTML = ops.map(o => `<option>${o}</option>`).join('');
+  ['sd_responsable', 'sd_motivo', 'sd_buscar'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('sd_resultados').style.display = 'none';
+  document.getElementById('sd_btn').textContent = tipo === 'carga' ? '+ Cargar' : '+ Descargar';
+  sdRender();
+  abrirModal('mStockDoc');
+}
+function sdBuscar(term) {
+  const box = document.getElementById('sd_resultados');
+  const q = term.trim().toLowerCase();
+  if (!q) { box.style.display = 'none'; return; }
+  const r = _productos.filter(p => String(p.nombre).toLowerCase().includes(q) || String(p.codigo_barras || '').toLowerCase().includes(q)).slice(0, 8);
+  box.innerHTML = r.length
+    ? r.map(p => `<div class="search-result-item" onclick="sdAgregar(${p.id})"><span>${p.nombre}</span><span style="color:var(--ink-soft);">stock: ${p.stock}</span></div>`).join('')
+    : '<div class="search-empty">Sin resultados</div>';
+  box.style.display = 'block';
+}
+function sdAgregar(id) {
+  const p = _productos.find(x => x.id === id); if (!p) return;
+  if (!_sdItems.find(i => i.producto_id === id)) {
+    _sdItems.push({ producto_id: p.id, codigo_barras: p.codigo_barras, nombre: p.nombre, precio_compra: p.precio_compra, precio_venta: p.precio_venta, cantidad: 1 });
+  }
+  document.getElementById('sd_buscar').value = '';
+  document.getElementById('sd_resultados').style.display = 'none';
+  sdRender();
+}
+function sdSet(i, campo, val) { _sdItems[i][campo] = val; sdTotal(); }
+function sdQuitar(i) { _sdItems.splice(i, 1); sdRender(); }
+function sdTotal() {
+  const t = _sdItems.reduce((a, i) => a + (Number(i.precio_compra) || 0) * (parseInt(i.cantidad) || 0), 0);
+  document.getElementById('sd_total').textContent = _sdTipo === 'carga' && _sdItems.length ? 'Total compra: ' + fmtMoney(t) : '';
+}
+function sdRender() {
+  const carga = _sdTipo === 'carga';
+  document.getElementById('sd_items').innerHTML = _sdItems.length
+    ? _sdItems.map((it, i) => `<tr>
+        <td>${it.codigo_barras || '—'}</td><td>${it.nombre}</td>
+        <td>${carga ? `<input type="number" step="0.01" value="${it.precio_compra}" style="width:90px;" oninput="sdSet(${i},'precio_compra',this.value)">` : fmtMoney(it.precio_compra)}</td>
+        <td>${carga ? `<input type="number" step="0.01" value="${it.precio_venta}" style="width:90px;" oninput="sdSet(${i},'precio_venta',this.value)">` : fmtMoney(it.precio_venta)}</td>
+        <td style="text-align:center;"><input type="number" min="1" value="${it.cantidad}" style="width:70px;" oninput="sdSet(${i},'cantidad',this.value)"></td>
+        <td><button class="btn btn-danger btn-sm" onclick="sdQuitar(${i})">✕</button></td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="6" style="text-align:center;">Busca y agrega productos</td></tr>';
+  sdTotal();
+}
+let _guardandoDoc = false;
+async function sdGuardar() {
+  if (_guardandoDoc) return;
+  const body = {
+    tipo: _sdTipo,
+    almacen_id: document.getElementById('sd_almacen').value,
+    motivo: document.getElementById('sd_motivo').value.trim(),
+    tipo_operacion: document.getElementById('sd_operacion').value,
+    responsable: document.getElementById('sd_responsable').value.trim(),
+    items: _sdItems,
+  };
+  if (!body.motivo) { toast('El motivo es obligatorio', 'rojo'); return; }
+  if (!_sdItems.length) { toast('Agrega al menos un producto', 'rojo'); return; }
+  _guardandoDoc = true;
+  const btn = document.getElementById('sd_btn');
+  const txt = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    const d = await api('/api/stock-documentos', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    toast(_sdTipo === 'carga' ? 'Stock cargado' : 'Stock descargado', 'verde');
+    cerrarModal('mStockDoc');
+    cargarProductos();
+    cargarStockDocs(_sdTipo);
+  } finally {
+    _guardandoDoc = false;
+    btn.disabled = false; btn.textContent = txt;
+  }
+}
+async function verStockDoc(id) {
+  document.getElementById('sdd_contenido').innerHTML = 'Cargando...';
+  abrirModal('mStockDetalle');
+  const d = await api(`/api/stock-documentos/${id}`, { headers: authHeaders() });
+  if (!d.ok) { document.getElementById('sdd_contenido').innerHTML = d.error || 'Error'; return; }
+  const x = d.documento;
+  document.getElementById('sdd_contenido').innerHTML = `
+    <h2>${x.tipo === 'carga' ? 'Carga' : 'Descarga'} #${x.numero}</h2>
+    <p class="modal-sub">${fmtFecha(x.created_at)} — ${x.almacen_nombre || ''} — ${x.motivo || ''}${x.responsable ? ' — Resp: ' + x.responsable : ''}</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Cód. barras</th><th>Concepto</th><th>P. compra</th><th>P. venta</th><th>Cantidad</th></tr></thead>
+      <tbody>${x.items.map(i => `<tr><td>${i.codigo_barras || '—'}</td><td>${i.nombre}</td><td>${fmtMoney(i.precio_compra)}</td><td>${fmtMoney(i.precio_venta)}</td><td>${i.cantidad}</td></tr>`).join('')}</tbody>
+    </table></div>
+    ${x.tipo === 'carga' ? `<div style="text-align:right;font-weight:800;margin-top:10px;">Total: ${fmtMoney(x.total)}</div>` : ''}`;
+}
+
+// ── Stock por almacén ──
+let _stockFilas = [];
+async function cargarStockAlmacen() {
+  await Promise.all([cargarAlmacenes(), cargarProductos()]);
+  const sel = document.getElementById('sa_almacen');
+  const actual = sel.value;
+  sel.innerHTML = '<option value="">Almacén...</option>' + _almacenes.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('');
+  sel.value = actual;
+  const d = await api('/api/stock-almacen', { headers: authHeaders() });
+  _stockFilas = d.ok ? d.filas : [];
+  renderStockAlmacen();
+}
+function renderStockAlmacen() {
+  const q = document.getElementById('sa_buscar').value.trim().toLowerCase();
+  const al = document.getElementById('sa_almacen').value;
+  const lista = _stockFilas.filter(f => (!q || String(f.nombre).toLowerCase().includes(q)) && (!al || String(f.almacen_id) === al));
+  document.getElementById('tbStockAlmacen').innerHTML = lista.length
+    ? lista.map(f => {
+        const prod = _productos.find(p => String(p.id) === String(f.producto_id));
+        const foto = f.foto_url || prod?.foto_url;
+        return `<tr>
+          <td>
+            <div class="prod-cell">
+              ${foto
+                ? `<a href="${foto}" target="_blank" title="Ver foto completa"><img src="${thumb(foto, 104)}" class="prod-foto" loading="lazy"></a>`
+                : `<span class="prod-foto-ph">📦</span>`}
+              <span class="prod-nombre">${f.nombre}</span>
+            </div>
+          </td>
+          <td>${fmtMoney(f.precio_compra)}</td>
+          <td>${fmtMoney(f.precio_venta)}</td>
+          <td>${f.almacen}</td>
+          <td>${f.stock}</td>
+        </tr>`;
+      }).join('')
+    : '<tr class="empty-row"><td colspan="5" style="text-align:center;">Sin datos</td></tr>';
+}
+async function crearAlmacen() {
+  const nombre = prompt('Nombre del nuevo almacén:');
+  if (!nombre || !nombre.trim()) return;
+  const d = await api('/api/almacenes', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ nombre: nombre.trim() }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Almacén creado', 'verde');
+  cargarStockAlmacen();
+}
+document.addEventListener('click', (e) => {
+  const box = document.getElementById('sd_resultados');
+  if (box && !e.target.closest('#sd_buscar') && !box.contains(e.target)) box.style.display = 'none';
+});
 // ══════════════════════════════════════════════════════════════
 // VENTAS
 // ══════════════════════════════════════════════════════════════

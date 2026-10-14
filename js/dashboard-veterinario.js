@@ -220,21 +220,83 @@ async function eliminarConsulta(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// INVENTARIO (solo lectura)
+// INVENTARIO (solo lectura, mismo diseño del propietario)
 // ══════════════════════════════════════════════════════════════
+let _productos = [];
+
+function llenarFiltro(selId, label, valores) {
+  const sel = document.getElementById(selId);
+  const actual = sel.value;
+  sel.innerHTML = `<option value="">${label}</option>` + valores.map(v => `<option value="${v}">${v}</option>`).join('');
+  sel.value = valores.includes(actual) ? actual : '';
+}
+const unicos = (k) => [...new Set(_productos.map(p => p[k]).filter(Boolean))].sort();
+function codigoSis(p) { return 'P' + String(p.id).padStart(5, '0'); }
+// Pide a Cloudinary una versión pequeña y optimizada
+function thumb(url, size) {
+  return url && url.includes('/upload/')
+    ? url.replace('/upload/', `/upload/w_${size},h_${size},c_fill,q_auto,f_auto/`)
+    : url;
+}
+function estadoStock(p) {
+  if (Number(p.stock) <= 0) return 'agotado';
+  if (Number(p.stock) <= Number(p.stock_minimo)) return 'bajo';
+  return 'ok';
+}
+
 async function cargarProductos() {
   const d = await api('/api/productos', { headers: authHeaders() });
-  const productos = d.ok ? d.productos : [];
-  document.getElementById('tbProductos').innerHTML = productos.length
-    ? productos.map(p => `<tr>
-        <td><strong>${p.nombre}</strong></td>
-        <td>${p.categoria || '—'}</td>
-        <td>${fmtMoney(p.precio_venta)}</td>
-        <td>${p.stock <= p.stock_minimo ? `<span class="badge b-danger">${p.stock}</span>` : p.stock}</td>
-      </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="4">Sin productos en el inventario</td></tr>';
+  _productos = d.ok ? d.productos : [];
+  llenarFiltro('inv_f_proveedor', 'Proveedor...', unicos('proveedor'));
+  llenarFiltro('inv_f_linea', 'Línea...', unicos('linea'));
+  llenarFiltro('inv_f_categoria', 'Categorías...', unicos('categoria'));
+  renderProductos();
 }
-let _productos = [];
+
+function renderProductos() {
+  const q = document.getElementById('inv_buscar').value.trim().toLowerCase();
+  const fp = document.getElementById('inv_f_proveedor').value;
+  const fl = document.getElementById('inv_f_linea').value;
+  const fs = document.getElementById('inv_f_stock').value;
+  const fc = document.getElementById('inv_f_categoria').value;
+  const lista = _productos.filter(p =>
+    (!q || [p.nombre, p.codigo_barras, p.marca].some(x => String(x || '').toLowerCase().includes(q))) &&
+    (!fp || p.proveedor === fp) && (!fl || p.linea === fl) && (!fc || p.categoria === fc) &&
+    (!fs || estadoStock(p) === fs));
+  document.getElementById('tbProductos').innerHTML = lista.length
+    ? lista.map(p => {
+        const es = estadoStock(p);
+        const stockHtml = `<span class="badge ${es === 'ok' ? 'b-primary' : es === 'bajo' ? 'b-accent' : 'b-danger'}">${p.stock}</span>`;
+        const estado = !p.activo ? '<span class="badge b-grey">Inactivo</span>'
+          : es === 'agotado' ? '<span class="badge b-danger">Agotado</span>'
+          : es === 'bajo' ? '<span class="badge b-accent">Stock bajo</span>'
+          : '<span class="badge b-primary">Disponible</span>';
+                return `<tr>
+          <td>${codigoSis(p)}</td>
+          <td>
+            <div class="prod-cell">
+              ${p.foto_url
+                ? `<a href="${p.foto_url}" target="_blank" title="Ver foto completa"><img src="${thumb(p.foto_url, 104)}" class="prod-foto" loading="lazy"></a>`
+                : `<span class="prod-foto-ph">📦</span>`}
+              <span class="prod-nombre">${p.nombre}</span>
+            </div>
+          </td>
+          <td>${p.marca || '—'}</td>
+          <td>${p.proveedor || '—'}</td>
+          <td>${p.linea || '—'}</td>
+          <td>${fmtMoney(p.precio_venta)}</td>
+          <td>${stockHtml}</td>
+          <td>${estado}</td>
+        </tr>`;
+      }).join('')
+       : '<tr class="empty-row"><td colspan="8" style="text-align:center;">Sin productos en el inventario</td></tr>';
+}
+
+function limpiarFiltrosInv() {
+  ['inv_buscar', 'inv_f_proveedor', 'inv_f_linea', 'inv_f_stock', 'inv_f_categoria'].forEach(id => document.getElementById(id).value = '');
+  renderProductos();
+}
+
 async function cargarProductosParaVenta() {
   const d = await api('/api/productos', { headers: authHeaders() });
   _productos = d.ok ? d.productos : [];
