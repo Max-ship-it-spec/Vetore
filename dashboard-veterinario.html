@@ -167,83 +167,30 @@
         </div>
       </section>
 
-      <section class="section" id="sec-inventario">
-        <div class="inv-tabs">
-          <button class="inv-tab active" data-inv="catalogo" onclick="invTab('catalogo')">Catálogo</button>
-          <button class="inv-tab" data-inv="descargas" onclick="invTab('descargas')">Descargar stock</button>
-          <button class="inv-tab" data-inv="cargas" onclick="invTab('cargas')">Cargar stock</button>
-          <button class="inv-tab" data-inv="almacen" onclick="invTab('almacen')">Stock por almacén</button>
-        </div>
+<section class="section" id="sec-inventario">
+  <div class="card">
+    <div class="card-header"><h3>Productos <small style="font-weight:400;color:var(--ink-soft);">» Listado de productos registrados</small></h3></div>
+    <div class="inv-toolbar">
       
-        <!-- CATÁLOGO -->
-        <div class="inv-view active" id="inv-catalogo">
-          <div class="card">
-            <div class="card-header"><h3>Productos <small style="font-weight:400;color:var(--ink-soft);">» Listado de productos registrados</small></h3></div>
-            <div class="inv-toolbar">
-              <input type="text" id="inv_buscar" placeholder="Buscar producto..." oninput="renderProductos()">
-              <button class="btn btn-ghost btn-sm" title="Limpiar filtros" onclick="limpiarFiltrosInv()">⌫</button>
-              <button class="btn btn-ghost btn-sm" title="Actualizar" onclick="cargarProductos()">⟳</button>
-              <button class="btn btn-primary btn-sm" onclick="abrirCrearProducto()">+ CREAR NUEVO PRODUCTO</button>
-            </div>
-            <div class="inv-toolbar" style="padding-top:0;">
-              <select id="inv_f_proveedor" onchange="renderProductos()"><option value="">Proveedor...</option></select>
-              <select id="inv_f_linea" onchange="renderProductos()"><option value="">Línea...</option></select>
-              <select id="inv_f_stock" onchange="renderProductos()">
-                <option value="">Stock...</option><option value="ok">Disponible</option>
-                <option value="bajo">Stock bajo</option><option value="agotado">Agotado</option>
-              </select>
-              <select id="inv_f_categoria" onchange="renderProductos()"><option value="">Categorías...</option></select>
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>Cód.</th><th>Cód. barras</th><th>Nombre</th><th>Marca</th><th>Proveedor</th><th>Línea</th><th>Precio venta</th><th>Stock</th><th>Estado</th><th>Opciones</th></tr></thead>
-              <tbody id="tbProductos"><tr class="empty-row"><td colspan="10">Cargando...</td></tr></tbody>
-            </table></div>
-          </div>
-        </div>
-      
-        <!-- DESCARGAS -->
-        <div class="inv-view" id="inv-descargas">
-          <div class="card">
-            <div class="card-header">
-              <h3 style="color:#e74c3c;">⇥ Descargas de stock</h3>
-              <button class="btn btn-danger btn-sm" onclick="abrirStockDoc('descarga')">+ DESCARGAR STOCK</button>
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>#</th><th>Fecha de creación</th><th>Razón</th><th>Almacén</th><th>Responsable</th><th>Registrado por</th><th>Opciones</th></tr></thead>
-              <tbody id="tbDescargas"><tr class="empty-row"><td colspan="7">Cargando...</td></tr></tbody>
-            </table></div>
-          </div>
-        </div>
-      
-        <!-- CARGAS -->
-        <div class="inv-view" id="inv-cargas">
-          <div class="card">
-            <div class="card-header">
-              <h3 style="color:#1e90d6;">⇤ Cargas de stock</h3>
-              <button class="btn btn-primary btn-sm" onclick="abrirStockDoc('carga')">+ CARGAR STOCK</button>
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>#</th><th>Fecha de creación</th><th>Motivo</th><th>Almacén destino</th><th>Responsable</th><th>Total compra</th><th>Opciones</th></tr></thead>
-              <tbody id="tbCargas"><tr class="empty-row"><td colspan="7">Cargando...</td></tr></tbody>
-            </table></div>
-          </div>
-        </div>
-      
-        <!-- STOCK POR ALMACÉN -->
-        <div class="inv-view" id="inv-almacen">
-          <div class="card">
-            <div class="card-header"><h3>Stock por almacén</h3><button class="btn btn-ghost btn-sm" onclick="crearAlmacen()">+ Almacén</button></div>
-            <div class="inv-toolbar">
-              <input type="text" id="sa_buscar" placeholder="Buscar producto..." oninput="renderStockAlmacen()">
-              <select id="sa_almacen" onchange="renderStockAlmacen()"><option value="">Almacén...</option></select>
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>Producto</th><th>Precio de compra</th><th>Precio de venta</th><th>Almacén</th><th>Stock</th></tr></thead>
-              <tbody id="tbStockAlmacen"><tr class="empty-row"><td colspan="5">Cargando...</td></tr></tbody>
-            </table></div>
-          </div>
-        </div>
-      </section>
+      <input type="text" id="inv_buscar" placeholder="Buscar producto..." oninput="renderProductos()">
+      <button class="btn btn-ghost btn-sm" title="Limpiar filtros" onclick="limpiarFiltrosInv()">⌫</button>
+      <button class="btn btn-ghost btn-sm" title="Actualizar" onclick="cargarProductos()">⟳</button>
+    </div>
+    <div class="inv-toolbar" style="padding-top:0;">
+      <select id="inv_f_proveedor" onchange="renderProductos()"><option value="">Proveedor...</option></select>
+      <select id="inv_f_linea" onchange="renderProductos()"><option value="">Línea...</option></select>
+      <select id="inv_f_stock" onchange="renderProductos()">
+        <option value="">Stock...</option><option value="ok">Disponible</option>
+        <option value="bajo">Stock bajo</option><option value="agotado">Agotado</option>
+      </select>
+      <select id="inv_f_categoria" onchange="renderProductos()"><option value="">Categorías...</option></select>
+    </div>
+    <div class="table-wrap"><table>
+     <thead><tr><th>Cód.</th><th>Nombre</th><th>Marca</th><th>Proveedor</th><th>Línea</th><th>Precio venta</th><th>Stock</th><th>Estado</th></tr></thead>
+<tbody id="tbProductos"><tr class="empty-row"><td colspan="8" style="text-align:center;">Cargando...</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
 
       <!-- REPORTES (limitado) -->
       <section class="section" id="sec-reportes">
@@ -457,68 +404,6 @@
 
 <datalist id="dl_proveedor"></datalist><datalist id="dl_linea"></datalist><datalist id="dl_categoria"></datalist>
 
-<!-- MODAL: producto (crear / editar) -->
-<div class="modal-overlay" id="mProducto">
-  <div class="modal" style="max-width:880px;">
-    <button class="modal-close" onclick="cerrarModal('mProducto')">✕</button>
-    <h2 id="mProductoTitulo">Nuevo producto</h2>
-    <input type="hidden" id="pr_id">
-    <div class="ficha-tabs">
-      <button class="ficha-tab-btn active" id="pr_tab_editar" onclick="prTab('editar')">Editar</button>
-      <button class="ficha-tab-btn" id="pr_tab_kardex" onclick="prTab('kardex')">Kardex</button>
-    </div>
-
-    <div id="pr_panel_editar">
-      <div class="inv-grid" style="grid-template-columns:2fr 1fr 1fr;">
-        <div class="field"><label>Nombre del producto *</label><input type="text" id="pr_nombre"></div>
-        <div class="field"><label>Marca</label><input type="text" id="pr_marca"></div>
-        <div class="field"><label>Código de sistema</label><input type="text" id="pr_codigo_sis" disabled></div>
-      </div>
-      <div class="inv-grid">
-        <div class="field"><label>Código de barras</label><input type="text" id="pr_barras"></div>
-        <div class="field"><label>Presentación</label>
-          <select id="pr_presentacion"><option value="">—</option><option>Ampolla</option><option>Tableta</option><option>Cápsula</option><option>Frasco</option><option>Sobre</option><option>Bolsa</option><option>Caja</option><option>Unidad</option></select></div>
-        <div class="field"><label>Contenido</label><input type="text" id="pr_contenido"></div>
-        <div class="field"><label>Unidad de medida</label>
-          <select id="pr_unidad"><option>UND</option><option>KG</option><option>G</option><option>ML</option><option>L</option></select></div>
-      </div>
-      <div class="inv-grid">
-        <div class="field"><label>Proveedor</label><input type="text" id="pr_proveedor" list="dl_proveedor"></div>
-        <div class="field"><label>Línea *</label><input type="text" id="pr_linea" list="dl_linea" placeholder="Farmacia, Clínica..."></div>
-        <div class="field"><label>Categoría *</label><input type="text" id="pr_categoria" list="dl_categoria"></div>
-        <div class="field"><label>Subcategoría</label><input type="text" id="pr_subcategoria"></div>
-      </div>
-      <div class="inv-grid">
-        <div class="field"><label>Precio de compra</label><input type="number" step="0.01" id="pr_precio_compra"></div>
-        <div class="field"><label>Precio de venta</label><input type="number" step="0.01" id="pr_precio_venta"></div>
-        <div class="field" id="pr_grp_actual"><label>Stock actual</label><input type="number" id="pr_stock_actual" disabled></div>
-        <div class="field" id="pr_grp_inicial"><label>Stock inicial (almacén principal)</label><input type="number" id="pr_stock_inicial" value="0" min="0"></div>
-      </div>
-      <div class="inv-grid">
-        <div class="field"><label>Stock mínimo *</label><input type="number" id="pr_stock_minimo" min="0"></div>
-        <div class="field"><label>Stock máximo *</label><input type="number" id="pr_stock_maximo" min="0"></div>
-        <div class="field"><label>Frecuencia de aplicación o venta (días)</label><input type="number" id="pr_frecuencia" min="0"></div>
-      </div>
-      <div class="inv-grid">
-        <div class="field"><label>Disponible para ventas *</label>
-          <select id="pr_disponible"><option value="1">SI</option><option value="0">NO</option></select></div>
-        <div class="field"><label>Estado</label>
-          <select id="pr_activo"><option value="1">ACTIVO</option><option value="0">INACTIVO</option></select></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px;">
-        <button class="btn btn-ghost" onclick="cerrarModal('mProducto')">↩ Regresar al listado</button>
-        <button class="btn btn-primary" onclick="guardarProducto()">+ Guardar cambios</button>
-      </div>
-    </div>
-
-    <div id="pr_panel_kardex" style="display:none;">
-      <div class="table-wrap"><table>
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Almacén</th><th>Cantidad</th><th>Saldo total</th><th>Motivo</th><th>Usuario</th></tr></thead>
-        <tbody id="tbKardex"></tbody>
-      </table></div>
-    </div>
-  </div>
-</div>
 
 <!-- MODAL: cargar / descargar stock -->
 <div class="modal-overlay" id="mStockDoc">

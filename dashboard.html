@@ -182,19 +182,227 @@
         </div>
       </section>
 
-      <!-- INVENTARIO -->
-      <section class="section" id="sec-inventario">
-        <div class="card">
-          <div class="card-header">
-            <h3>Inventario básico</h3>
-            <button class="btn btn-primary btn-sm" onclick="abrirCrearProducto()">+ Nuevo producto</button>
-          </div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Producto</th><th>Categoría</th><th>Precio venta</th><th>Stock</th><th></th></tr></thead>
-            <tbody id="tbProductos"><tr class="empty-row"><td colspan="5">Cargando...</td></tr></tbody>
-          </table></div>
-        </div>
-      </section>
+
+      
+<datalist id="dl_proveedor"></datalist><datalist id="dl_linea"></datalist><datalist id="dl_categoria"></datalist>
+
+<!-- MODAL: producto (crear / editar) -->
+<div class="modal-overlay" id="mProducto">
+  <div class="modal" style="max-width:880px;">
+    <button class="modal-close" onclick="cerrarModal('mProducto')">✕</button>
+    <h2 id="mProductoTitulo">Nuevo producto</h2>
+    <input type="hidden" id="pr_id">
+    <div class="ficha-tabs">
+      <button class="ficha-tab-btn active" id="pr_tab_editar" onclick="prTab('editar')">Editar</button>
+      <button class="ficha-tab-btn" id="pr_tab_kardex" onclick="prTab('kardex')">Kardex</button>
+    </div>
+
+<div id="pr_panel_editar">
+
+  <!-- Foto + datos principales -->
+  <div class="pr-hero">
+    <div class="pr-hero-foto">
+      <div id="pr_foto_preview_box"><div class="prod-foto-lg-ph">📦</div></div>
+      <input type="file" id="pr_foto_input" accept="image/*" style="display:none;" onchange="previsualizarFotoProducto(event)">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('pr_foto_input').click()">Subir foto</button>
+    </div>
+    <div class="pr-hero-campos">
+      <div class="field"><label>Nombre del producto *</label><input type="text" id="pr_nombre" placeholder="Ej: Amoxicilina 500 mg"></div>
+      <div class="pr-grid pr-g2">
+        <div class="field"><label>Marca</label><input type="text" id="pr_marca"></div>
+        <div class="field"><label>Proveedor</label><input type="text" id="pr_proveedor" list="dl_proveedor"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Presentación -->
+  <div class="pr-sec">Presentación</div>
+  <div class="pr-grid pr-g3">
+    <div class="field"><label>Presentación</label>
+      <select id="pr_presentacion"><option value="">—</option><option>Ampolla</option><option>Tableta</option><option>Cápsula</option><option>Frasco</option><option>Sobre</option><option>Bolsa</option><option>Caja</option><option>Unidad</option></select></div>
+    <div class="field"><label>Contenido</label><input type="text" id="pr_contenido"></div>
+    <div class="field"><label>Unidad de medida</label>
+      <select id="pr_unidad"><option>UND</option><option>KG</option><option>G</option><option>ML</option><option>L</option></select></div>
+  </div>
+
+  <!-- Clasificación -->
+  <div class="pr-sec">Clasificación</div>
+  <div class="pr-grid pr-g3">
+    <div class="field"><label>Línea *</label><input type="text" id="pr_linea" list="dl_linea" placeholder="Farmacia, Clínica..."></div>
+    <div class="field"><label>Categoría *</label><input type="text" id="pr_categoria" list="dl_categoria"></div>
+    <div class="field"><label>Subcategoría</label><input type="text" id="pr_subcategoria"></div>
+  </div>
+
+  <!-- Precios y stock -->
+  <div class="pr-sec">Precios y stock</div>
+  <div class="pr-grid pr-g4">
+    <div class="field"><label>Precio de compra</label><input type="number" step="0.01" id="pr_precio_compra" placeholder="0.00"></div>
+    <div class="field"><label>Precio de venta</label><input type="number" step="0.01" id="pr_precio_venta" placeholder="0.00"></div>
+    <div class="field" id="pr_grp_actual"><label>Stock actual</label><input type="number" id="pr_stock_actual" disabled></div>
+    <div class="field" id="pr_grp_inicial"><label>Stock inicial</label><input type="number" id="pr_stock_inicial" value="0" min="0"></div>
+    <div class="field"><label>Stock mínimo *</label><input type="number" id="pr_stock_minimo" min="0"></div>
+    <div class="field"><label>Stock máximo *</label><input type="number" id="pr_stock_maximo" min="0"></div>
+    <div class="field"><label>Frecuencia (días)</label><input type="number" id="pr_frecuencia" min="0"></div>
+  </div>
+
+  <!-- Disponibilidad -->
+  <div class="pr-sec">Disponibilidad</div>
+  <div class="pr-grid pr-g2">
+    <div class="field"><label>Disponible para ventas *</label>
+      <select id="pr_disponible"><option value="1">SI</option><option value="0">NO</option></select></div>
+    <div class="field"><label>Estado</label>
+      <select id="pr_activo"><option value="1">ACTIVO</option><option value="0">INACTIVO</option></select></div>
+  </div>
+
+  <div class="pr-footer">
+    <button class="btn btn-ghost" onclick="cerrarModal('mProducto')">↩ Regresar al listado</button>
+    <button class="btn btn-primary" id="pr_btn_guardar" onclick="guardarProducto()">+ Guardar cambios</button>
+  </div>
+</div>
+
+<div id="pr_panel_kardex" style="display:none;">
+  <div class="kx-head" id="kx_head"></div>
+  <div class="kx-stats" id="kx_stats"></div>
+
+  <div class="kx-toolbar">
+    <select id="kx_f_tipo" onchange="renderKardex()">
+      <option value="">Todos los movimientos</option>
+      <option value="entrada">Solo entradas</option>
+      <option value="salida">Solo salidas</option>
+    </select>
+    <select id="kx_f_almacen" onchange="renderKardex()"><option value="">Todos los almacenes</option></select>
+    <span class="kx-count" id="kx_count"></span>
+    
+  </div>
+
+  <div class="table-wrap kx-table"><table>
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Almacén</th><th style="text-align:right;">Entrada</th><th style="text-align:right;">Salida</th><th style="text-align:right;">Saldo</th><th>Motivo</th><th>Usuario</th></tr></thead>
+    <tbody id="tbKardex"></tbody>
+  </table></div>
+</div>
+
+  </div>
+</div>
+
+<!-- MODAL: cargar / descargar stock -->
+<div class="modal-overlay" id="mStockDoc">
+  <div class="modal" style="max-width:900px;">
+    <button class="modal-close" onclick="cerrarModal('mStockDoc')">✕</button>
+    <h2 id="sd_titulo">Cargar stock</h2>
+    <div class="inv-grid" style="grid-template-columns:1fr 2fr;">
+      <div class="field"><label>Responsable / Solicitante</label><input type="text" id="sd_responsable"></div>
+      <div class="field"><label>Motivo</label><input type="text" id="sd_motivo" placeholder="Ej: Corrección, compra a proveedor..."></div>
+    </div>
+    <div class="inv-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="field"><label id="sd_lbl_almacen">Almacén</label><select id="sd_almacen"></select></div>
+      <div class="field"><label>Tipo de operación</label><select id="sd_operacion"></select></div>
+    </div>
+    <div class="field" style="position:relative;">
+      <label>Buscar y agregar productos a la lista:</label>
+      <input type="text" id="sd_buscar" placeholder="Buscar producto..." oninput="sdBuscar(this.value)" autocomplete="off">
+      <div id="sd_resultados" class="sd-resultados" style="display:none;"></div>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Código de barras</th><th>Concepto</th><th>Precio de compra</th><th>Precio de venta</th><th style="text-align:center;">Cantidad</th><th></th></tr></thead>
+      <tbody id="sd_items"></tbody>
+    </table></div>
+    <div id="sd_total" style="text-align:right;font-weight:800;margin:10px 0;"></div>
+    <div style="display:flex;justify-content:space-between;gap:10px;">
+      <button class="btn btn-ghost" onclick="cerrarModal('mStockDoc')">↩ Cancelar</button>
+      <button class="btn btn-primary" onclick="sdGuardar()" id="sd_btn">+ Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: detalle de carga / descarga -->
+<div class="modal-overlay" id="mStockDetalle">
+  <div class="modal" style="max-width:820px;">
+    <button class="modal-close" onclick="cerrarModal('mStockDetalle')">✕</button>
+    <div id="sdd_contenido">Cargando...</div>
+  </div>
+</div>
+
+
+
+
+<!-- INVENTARIO -->
+<section class="section" id="sec-inventario">
+  <div class="inv-tabs">
+    <button class="inv-tab active" data-inv="catalogo" onclick="invTab('catalogo')">Catálogo</button>
+    <button class="inv-tab" data-inv="descargas" onclick="invTab('descargas')">Descargar stock</button>
+    <button class="inv-tab" data-inv="cargas" onclick="invTab('cargas')">Cargar stock</button>
+    <button class="inv-tab" data-inv="almacen" onclick="invTab('almacen')">Stock por almacén</button>
+  </div>
+
+  <!-- CATÁLOGO -->
+  <div class="inv-view active" id="inv-catalogo">
+    <div class="card">
+      <div class="card-header"><h3>Productos <small style="font-weight:400;color:var(--ink-soft);">» Listado de productos registrados</small></h3></div>
+      <div class="inv-toolbar">
+        <input type="text" id="inv_buscar" placeholder="Buscar producto..." oninput="renderProductos()">
+        <button class="btn btn-ghost btn-sm" title="Limpiar filtros" onclick="limpiarFiltrosInv()">⌫</button>
+        <button class="btn btn-ghost btn-sm" title="Actualizar" onclick="cargarProductos()">⟳</button>
+        <button class="btn btn-primary btn-sm" onclick="abrirCrearProducto()">+ CREAR NUEVO PRODUCTO</button>
+      </div>
+      <div class="inv-toolbar" style="padding-top:0;">
+        <select id="inv_f_proveedor" onchange="renderProductos()"><option value="">Proveedor...</option></select>
+        <select id="inv_f_linea" onchange="renderProductos()"><option value="">Línea...</option></select>
+        <select id="inv_f_stock" onchange="renderProductos()">
+          <option value="">Stock...</option><option value="ok">Disponible</option>
+          <option value="bajo">Stock bajo</option><option value="agotado">Agotado</option>
+        </select>
+        <select id="inv_f_categoria" onchange="renderProductos()"><option value="">Categorías...</option></select>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Cód.</th><th>Nombre</th><th>Marca</th><th>Proveedor</th><th>Línea</th><th>Precio venta</th><th>Stock</th><th>Estado</th><th>Opciones</th></tr></thead>
+<tbody id="tbProductos"><tr class="empty-row"><td colspan="9" style="text-align:center;">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- DESCARGAS -->
+  <div class="inv-view" id="inv-descargas">
+    <div class="card">
+      <div class="card-header">
+        <h3 style="color:#e74c3c;">⇥ Descargas de stock</h3>
+        <button class="btn btn-danger btn-sm" onclick="abrirStockDoc('descarga')">+ DESCARGAR STOCK</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Fecha de creación</th><th>Razón</th><th>Almacén</th><th>Responsable</th><th>Registrado por</th><th>Opciones</th></tr></thead>
+        <tbody id="tbDescargas"><tr class="empty-row"><td colspan="7" style="text-align:center;">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- CARGAS -->
+  <div class="inv-view" id="inv-cargas">
+    <div class="card">
+      <div class="card-header">
+        <h3 style="color:#1e90d6;">⇤ Cargas de stock</h3>
+        <button class="btn btn-primary btn-sm" onclick="abrirStockDoc('carga')">+ CARGAR STOCK</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Fecha de creación</th><th>Motivo</th><th>Almacén destino</th><th>Responsable</th><th>Total compra</th><th>Opciones</th></tr></thead>
+        <tbody id="tbCargas"><tr class="empty-row"><td colspan="7" style="text-align:center;">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- STOCK POR ALMACÉN -->
+  <div class="inv-view" id="inv-almacen">
+    <div class="card">
+      <div class="card-header"><h3>Stock por almacén</h3><button class="btn btn-ghost btn-sm" onclick="crearAlmacen()">+ Almacén</button></div>
+      <div class="inv-toolbar">
+        <input type="text" id="sa_buscar" placeholder="Buscar producto..." oninput="renderStockAlmacen()">
+        <select id="sa_almacen" onchange="renderStockAlmacen()"><option value="">Almacén...</option></select>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Producto</th><th>Precio de compra</th><th>Precio de venta</th><th>Almacén</th><th>Stock</th></tr></thead>
+        <tbody id="tbStockAlmacen"><tr class="empty-row"><td colspan="5" style="text-align:center;">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
 
       <!-- CAJA -->
       <section class="section" id="sec-caja">
@@ -402,26 +610,7 @@
   </div>
 </div>
 
-<!-- MODAL: producto -->
-<div class="modal-overlay" id="mProducto">
-  <div class="modal">
-    <button class="modal-close" onclick="cerrarModal('mProducto')">✕</button>
-    <h2 id="mProductoTitulo">Nuevo producto</h2>
-    <p class="modal-sub">Producto o insumo del inventario</p>
-    <input type="hidden" id="pr_id">
-    <div class="field"><label>Nombre</label><input type="text" id="pr_nombre"></div>
-    <div class="field"><label>Categoría</label><input type="text" id="pr_categoria" placeholder="Medicamento, vacuna, alimento..."></div>
-    <div class="form-row">
-      <div class="field"><label>Precio de venta</label><input type="number" step="0.01" id="pr_precio_venta"></div>
-      <div class="field"><label>Precio de compra</label><input type="number" step="0.01" id="pr_precio_compra"></div>
-    </div>
-    <div class="form-row">
-      <div class="field"><label>Stock actual</label><input type="number" id="pr_stock"></div>
-      <div class="field"><label>Stock mínimo</label><input type="number" id="pr_stock_minimo"></div>
-    </div>
-    <button class="btn btn-primary btn-block" onclick="guardarProducto()">Guardar producto</button>
-  </div>
-</div>
+
 
 <!-- MODAL: venta -->
 <div class="modal-overlay" id="mVenta">
