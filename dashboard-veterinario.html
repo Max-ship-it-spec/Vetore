@@ -127,9 +127,9 @@
     <div class="card-header">
       <h3>Mi agenda</h3>
       <div style="display:flex;gap:6px;">
-        <button class="btn btn-primary btn-sm" id="ag_btn_cal" onclick="agVista('cal')">Calendario</button>
-        <button class="btn btn-ghost btn-sm" id="ag_btn_lista" onclick="agVista('lista')">Lista</button>
-      </div>
+  <button class="btn btn-primary btn-sm" id="ag_btn_cal" onclick="agVista('cal')">Calendario</button>
+  <button class="btn btn-ghost btn-sm" id="ag_btn_lista" onclick="agVista('lista')">Lista</button>
+</div>
     </div>
 
     <!-- Vista calendario -->
@@ -144,12 +144,13 @@
     </div>
 
     <!-- Vista lista -->
-    <div id="ag_lista_wrap" style="display:none;">
-      <div class="table-wrap"><table>
-        <thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
-        <tbody id="tbCitas"><tr class="empty-row"><td colspan="7">Cargando...</td></tr></tbody>
-      </table></div>
-    </div>
+    <!-- Vista lista -->
+<div id="ag_lista_wrap" style="display:none;">
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Veterinario</th><th>Motivo</th><th>Estado</th></tr></thead>
+    <tbody id="tbCitas"><tr class="empty-row"><td colspan="7">Cargando...</td></tr></tbody>
+  </table></div>
+</div>
   </div>
 </section>
 

@@ -136,19 +136,38 @@
         </div>
       </section>
 
-      <!-- AGENDA -->
-      <section class="section" id="sec-agenda">
-        <div class="card">
-          <div class="card-header">
-            <h3>Agenda</h3>
-            <button class="btn btn-primary btn-sm" onclick="abrirCrearCita()">+ Nueva cita</button>
-          </div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Veterinario</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="tbCitas"><tr class="empty-row"><td colspan="8">Cargando...</td></tr></tbody>
-          </table></div>
-        </div>
-      </section>
+<!-- AGENDA -->
+<section class="section" id="sec-agenda">
+  <div class="card">
+    <div class="card-header">
+      <h3>Agenda</h3>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-primary btn-sm" onclick="abrirCrearCita()">+ Nueva cita</button>
+        <button class="btn btn-primary btn-sm" id="ag_btn_cal" onclick="agVista('cal')">Calendario</button>
+        <button class="btn btn-ghost btn-sm" id="ag_btn_lista" onclick="agVista('lista')">Lista</button>
+      </div>
+    </div>
+
+    <!-- Vista calendario -->
+    <div id="ag_cal_wrap" style="padding:18px 22px;">
+      <div class="cal-nav">
+        <button class="btn btn-ghost btn-sm" onclick="agMes(-1)">‹</button>
+        <strong id="cal_titulo"></strong>
+        <button class="btn btn-ghost btn-sm" onclick="agMes(1)">›</button>
+        <button class="btn btn-ghost btn-sm" onclick="agHoy()" style="margin-left:auto;">Hoy</button>
+      </div>
+      <div class="cal-grid" id="cal_grid"></div>
+    </div>
+
+    <!-- Vista lista -->
+    <div id="ag_lista_wrap" style="display:none;">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Mascota</th><th>Veterinario</th><th>Motivo</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbCitas"><tr class="empty-row"><td colspan="8">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
 
       <!-- HISTORIA CLÍNICA -->
       <section class="section" id="sec-historia">
@@ -560,6 +579,18 @@
     <div class="field"><label>Alergias</label><textarea id="pa_alergias" rows="2"></textarea></div>
     <div class="field"><label>Observaciones</label><textarea id="pa_observaciones" rows="2"></textarea></div>
     <button class="btn btn-primary btn-block" onclick="guardarPaciente()">Guardar mascota</button>
+  </div>
+</div>
+
+
+<!-- MODAL: citas del día -->
+<div class="modal-overlay" id="mDiaAgenda">
+  <div class="modal" style="max-width:600px;">
+    <button class="modal-close" onclick="cerrarModal('mDiaAgenda')">✕</button>
+    <h2 id="mDiaTitulo">Citas</h2>
+    <p class="modal-sub" id="mDiaSub"></p>
+    <div id="mDiaCont"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="nuevaCitaDia()">+ Nueva cita este día</button>
   </div>
 </div>
 
