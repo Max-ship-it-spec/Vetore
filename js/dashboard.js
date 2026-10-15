@@ -240,16 +240,99 @@ async function eliminarPaciente(id) {
 // AGENDA
 // ══════════════════════════════════════════════════════════════
 let _citas = [];
+let _agMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let _agDiaSel = '';
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const ESTADOS_CITA = ['pendiente', 'confirmada', 'en_espera', 'atendiendo', 'atendida', 'no_asistio', 'cancelada'];
+const estadoBadge = { pendiente: 'b-grey', confirmada: 'b-primary', en_espera: 'b-accent', atendiendo: 'b-accent', atendida: 'b-primary', cancelada: 'b-danger', no_asistio: 'b-danger' };
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fechaCita = (c) => {
+  const f = String(c.fecha || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(f)) return f;
+  const d = new Date(f);
+  return isNaN(d) ? f.slice(0, 10) : ymd(d);
+};
+
 async function cargarCitas() {
-  await asegurarVeterinariosCargados();
-  const d = await api('/api/citas', { headers: authHeaders() });
+  const [d] = await Promise.all([
+    api('/api/citas', { headers: authHeaders() }),
+    asegurarVeterinariosCargados(),
+    asegurarClientesCargados(),
+  ]);
   _citas = d.ok ? d.citas : [];
+  renderCalendario();
   renderCitas();
 }
-const estadoBadge = { pendiente: 'b-grey', confirmada: 'b-primary', en_espera: 'b-accent', atendiendo: 'b-accent', atendida: 'b-primary', cancelada: 'b-danger', no_asistio: 'b-danger' };
+
+function agVista(v) {
+  document.getElementById('ag_cal_wrap').style.display = v === 'cal' ? '' : 'none';
+  document.getElementById('ag_lista_wrap').style.display = v === 'lista' ? '' : 'none';
+  document.getElementById('ag_btn_cal').className = 'btn btn-sm ' + (v === 'cal' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('ag_btn_lista').className = 'btn btn-sm ' + (v === 'lista' ? 'btn-primary' : 'btn-ghost');
+}
+function agMes(delta) {
+  _agMes = new Date(_agMes.getFullYear(), _agMes.getMonth() + delta, 1);
+  renderCalendario();
+}
+function agHoy() {
+  const h = new Date();
+  _agMes = new Date(h.getFullYear(), h.getMonth(), 1);
+  renderCalendario();
+}
+
+function renderCalendario() {
+  const y = _agMes.getFullYear(), m = _agMes.getMonth();
+  document.getElementById('cal_titulo').textContent = `${MESES[m]} ${y}`;
+  const grid = document.getElementById('cal_grid');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:14px;';
+
+  const porDia = {};
+  _citas.forEach(c => { const f = fechaCita(c); (porDia[f] = porDia[f] || []).push(c); });
+
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7; // semana empieza en lunes
+  const diasMes = new Date(y, m + 1, 0).getDate();
+  const hoy = ymd(new Date());
+
+  let html = DIAS.map(d => `<div style="text-align:center;font-size:12px;font-weight:700;color:var(--ink-soft);padding:4px 0;">${d}</div>`).join('');
+  for (let i = 0; i < offset; i++) html += '<div></div>';
+  for (let d = 1; d <= diasMes; d++) {
+    const f = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const n = (porDia[f] || []).length;
+    const esHoy = f === hoy;
+    html += `<div onclick="abrirDiaAgenda('${f}')" style="cursor:pointer;min-height:70px;padding:6px 8px;border:1px solid ${esHoy ? 'var(--primary,#0f6b4f)' : 'var(--border)'};border-radius:10px;background:${n ? 'rgba(15,107,79,.08)' : '#fff'};">
+      <div style="font-size:13px;font-weight:${esHoy ? 800 : 600};">${d}</div>
+      ${n ? `<span class="badge b-primary" style="margin-top:6px;display:inline-block;">${n} cita${n > 1 ? 's' : ''}</span>` : ''}
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+function abrirDiaAgenda(f) {
+  _agDiaSel = f;
+  const citas = _citas.filter(c => fechaCita(c) === f).sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+  document.getElementById('mDiaTitulo').textContent = 'Citas del ' + fmtFecha(f);
+  document.getElementById('mDiaSub').textContent = citas.length ? `${citas.length} cita(s)` : '';
+  document.getElementById('mDiaCont').innerHTML = citas.length
+    ? citas.map(c => `
+      <div class="inicio-list-item">
+        <span class="inicio-hora">${c.hora ? c.hora.slice(0, 5) : '—'}</span>
+        <span style="flex:1;">${c.paciente_nombre || '—'} (${c.cliente_nombre || '—'})${c.veterinario_nombre ? ' · ' + c.veterinario_nombre : ''} — ${c.motivo || 'Consulta'}</span>
+        <span class="badge ${estadoBadge[c.estado] || 'b-grey'}">${(c.estado || '').replace('_', ' ')}</span>
+        <button class="btn btn-ghost btn-sm" onclick="whatsappCita(${c.id})" style="color:#25D366;font-weight:700;">WhatsApp</button>
+      </div>`).join('')
+    : '<p style="color:var(--ink-soft);font-size:13px;">No hay citas este día.</p>';
+  abrirModal('mDiaAgenda');
+}
+function nuevaCitaDia() {
+  cerrarModal('mDiaAgenda');
+  abrirCrearCita(_agDiaSel);
+}
+
 function renderCitas() {
-  document.getElementById('tbCitas').innerHTML = _citas.length
-    ? _citas.map(c => `<tr>
+  const lista = [..._citas].sort((a, b) => (fechaCita(a) + String(a.hora)).localeCompare(fechaCita(b) + String(b.hora)));
+  document.getElementById('tbCitas').innerHTML = lista.length
+    ? lista.map(c => `<tr>
         <td>${fmtFecha(c.fecha)}</td>
         <td>${c.hora ? c.hora.slice(0, 5) : '—'}</td>
         <td>${c.cliente_nombre || '—'}</td>
@@ -257,13 +340,51 @@ function renderCitas() {
         <td>${c.veterinario_nombre || '—'}</td>
         <td>${c.motivo || '—'}</td>
         <td>
-          <select onchange="cambiarEstadoCita(${c.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;">
-            ${['pendiente', 'confirmada', 'en_espera', 'atendiendo', 'atendida', 'no_asistio', 'cancelada'].map(e => `<option value="${e}" ${e === c.estado ? 'selected' : ''}>${e.replace('_',' ')}</option>`).join('')}
-          </select>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select onchange="cambiarEstadoCita(${c.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;">
+              ${ESTADOS_CITA.map(e => `<option value="${e}" ${e === c.estado ? 'selected' : ''}>${e.replace('_', ' ')}</option>`).join('')}
+            </select>
+            <button class="btn btn-ghost btn-sm" title="Enviar recordatorio por WhatsApp" onclick="whatsappCita(${c.id})" style="color:#25D366;font-weight:700;">WhatsApp</button>
+          </div>
         </td>
         <td><button class="btn btn-danger btn-sm" onclick="eliminarCita(${c.id})">Eliminar</button></td>
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="8">No hay citas agendadas</td></tr>';
+}
+
+function telefonoWhatsApp(raw) {
+  let n = String(raw || '').replace(/\D/g, '');
+  if (!n) return '';
+  if (n.startsWith('593')) return n;
+  if (n.startsWith('0')) n = n.slice(1);
+  return '593' + n; // Ecuador
+}
+
+function whatsappCita(id) {
+  const c = _citas.find(x => x.id === id); if (!c) return;
+  const cli = _clientes.find(x => String(x.id) === String(c.cliente_id)) || _clientes.find(x => x.nombre === c.cliente_nombre);
+  const tel = telefonoWhatsApp(c.cliente_telefono || cli?.telefono);
+  if (!tel) { toast('Este cliente no tiene teléfono registrado', 'rojo'); return; }
+
+  const clinica = (user && user.nombre_clinica) || 'la clínica veterinaria';
+  const cliente = c.cliente_nombre || '';
+  const mascota = c.paciente_nombre || 'su mascota';
+  const fecha = fmtFecha(c.fecha);
+  const hora = c.hora ? c.hora.slice(0, 5) : '';
+  const cuando = hora ? `el ${fecha} a las ${hora}` : `el ${fecha}`;
+
+  const mensajes = {
+    pendiente:  `Hola ${cliente} 👋, le recordamos la cita de *${mascota}* ${cuando} en ${clinica}. ¿Nos confirma su asistencia? 🐾`,
+    confirmada: `Hola ${cliente} 👋, su cita para *${mascota}* está confirmada para ${cuando} en ${clinica}. ¡Los esperamos! 🐾`,
+    en_espera:  `Hola ${cliente}, *${mascota}* está en lista de espera en ${clinica}. En breve será atendido. 🐾`,
+    atendiendo: `Hola ${cliente}, *${mascota}* está siendo atendido en este momento en ${clinica}. Le avisaremos cuando termine. 🐾`,
+    atendida:   `Hola ${cliente} 👋, la atención de *${mascota}* del ${fecha} ya está completa ✅. Gracias por confiar en ${clinica}. Cualquier duda, escríbanos. 🐾`,
+    cancelada:  `Hola ${cliente}, la cita de *${mascota}* (${cuando}) fue cancelada. Si desea reagendar, escríbanos y con gusto le ayudamos. 🐾`,
+    no_asistio: `Hola ${cliente}, notamos que no pudo asistir a la cita de *${mascota}* (${cuando}). ¿Desea reagendarla? 🐾`,
+  };
+
+  const texto = mensajes[c.estado] || mensajes.pendiente;
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank');
 }
 async function poblarPacientesDeCliente(selectId, clienteId) {
   await Promise.all([asegurarClientesCargados(), asegurarPacientesCargados()]);
@@ -272,12 +393,13 @@ async function poblarPacientesDeCliente(selectId, clienteId) {
   sel.innerHTML = '<option value="">— Sin mascota —</option>' +
     lista.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
 }
-async function abrirCrearCita() {
+async function abrirCrearCita(fecha) {
   await Promise.all([asegurarClientesCargados(), asegurarVeterinariosCargados()]);
   poblarSelectClientes('ci_cliente_id');
   poblarSelectVeterinarios('ci_veterinario_id');
   document.getElementById('ci_paciente_id').innerHTML = '<option value="">— Selecciona un cliente primero —</option>';
-  ['ci_fecha', 'ci_hora', 'ci_motivo', 'ci_notas'].forEach(id => document.getElementById(id).value = '');
+  ['ci_hora', 'ci_motivo', 'ci_notas'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ci_fecha').value = typeof fecha === 'string' ? fecha : '';
   abrirModal('mCita');
 }
 async function guardarCita() {
