@@ -521,6 +521,9 @@ async function abrirFichaPaciente(id) {
   `;
   abrirModal('mFichaPaciente');
 }
+
+
+
 function fpNuevaVenta() {
   cerrarModal('mFichaPaciente');
   ir('ventas');

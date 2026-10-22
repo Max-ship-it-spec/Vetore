@@ -81,7 +81,10 @@ async function cargarPacientes() {
         <td>${p.cliente_nombre}</td>
         <td>${p.especie || '—'} ${p.raza ? '· ' + p.raza : ''}</td>
         <td>${p.peso ? p.peso + ' kg' : '—'}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="abrirFichaPaciente(${p.id})">Ver ficha</button></td>
+       <td><div style="display:flex;gap:6px;">
+  <button class="btn btn-ghost btn-sm" onclick="abrirFichaPaciente(${p.id})">Ver ficha</button>
+  <button class="btn btn-primary btn-sm" onclick="abrirNuevaCitaPaciente(${p.id})">+ Cita</button>
+</div></td>
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="5">No hay pacientes registrados</td></tr>';
 }
@@ -259,6 +262,125 @@ function whatsappCita(id) {
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, '_blank');
 }
 
+// ══════════════════════════════════════════════════════════════
+// NUEVA CITA (modal)
+// ══════════════════════════════════════════════════════════════
+let _ncModo = 'reg';
+let _guardandoCita = false;
+
+function ncTab(m) {
+  _ncModo = m;
+  document.getElementById('nc_tab_reg').classList.toggle('active', m === 'reg');
+  document.getElementById('nc_tab_nuevo').classList.toggle('active', m === 'nuevo');
+  document.getElementById('nc_reg').style.display = m === 'reg' ? '' : 'none';
+  document.getElementById('nc_nuevo').style.display = m === 'nuevo' ? '' : 'none';
+  document.getElementById('nc_telefono').value = '';
+  if (m === 'reg') ncClienteChange(document.getElementById('nc_cliente_id').value);
+}
+
+async function ncClienteChange(id) {
+  await poblarPacientesDeCliente('nc_paciente_id', id);
+  const c = _clientes.find(x => String(x.id) === String(id));
+  document.getElementById('nc_telefono').value = c?.telefono || '';
+}
+
+async function abrirNuevaCitaPaciente(pid) {
+  const p = _pacientes.find(x => x.id === pid); if (!p) return;
+  await abrirNuevaCita();
+  document.getElementById('nc_cliente_id').value = p.cliente_id;
+  await ncClienteChange(p.cliente_id);
+  document.getElementById('nc_paciente_id').value = p.id;
+}
+
+let _ncFotoFile = null;
+function ncPreviewFoto(e) {
+  const file = e.target.files[0]; if (!file) return;
+  _ncFotoFile = file;
+  const r = new FileReader();
+  r.onload = ev => document.getElementById('nc_foto_box').innerHTML = `<img src="${ev.target.result}" class="pac-foto-preview">`;
+  r.readAsDataURL(file);
+}
+
+async function abrirNuevaCita(fecha) {
+  await Promise.all([asegurarClientesCargados(), asegurarPacientesCargados()]);
+  poblarSelectClientes('nc_cliente_id');
+  document.getElementById('nc_paciente_id').innerHTML = '<option value="">— Selecciona un propietario primero —</option>';
+['nc_telefono', 'nc_hora', 'nc_hora_fin', 'nc_notas', 'nc_n_cliente', 'nc_n_mascota', 'nc_n_especie', 'nc_n_raza', 'nc_n_peso', 'nc_n_sexo']
+    .forEach(id => document.getElementById(id).value = '');
+      _ncFotoFile = null;
+  document.getElementById('nc_foto_input').value = '';
+  document.getElementById('nc_foto_box').innerHTML = '<div class="pac-foto-placeholder">🐾</div>';
+  document.getElementById('nc_servicio').selectedIndex = 0;
+  document.getElementById('nc_fecha').value = typeof fecha === 'string' ? fecha : new Date().toISOString().slice(0, 10);
+  document.getElementById('nc_vet').innerHTML = `<option>${user.nombre || 'Yo'} (asignada a mí)</option>`;
+  document.getElementById('nc_wa').checked = false;
+  ncTab('reg');
+  abrirModal('mNuevaCita');
+}
+
+async function guardarNuevaCita() {
+  if (_guardandoCita) return;
+  const v = id => document.getElementById(id).value.trim();
+  const fecha = v('nc_fecha'), hora = v('nc_hora'), horaFin = v('nc_hora_fin'), tel = v('nc_telefono');
+  if (!fecha || !hora) { toast('Fecha y hora de inicio son obligatorias', 'rojo'); return; }
+  if (!tel) { toast('El teléfono es obligatorio', 'rojo'); return; }
+
+  let cliente_id, paciente_id;
+  if (_ncModo === 'reg') {
+    cliente_id = v('nc_cliente_id'); paciente_id = v('nc_paciente_id');
+    if (!cliente_id || !paciente_id) { toast('Selecciona propietario y mascota', 'rojo'); return; }
+  } else if (!v('nc_n_cliente') || !v('nc_n_mascota')) {
+    toast('Escribe el nombre del propietario y de la mascota', 'rojo'); return;
+  }
+
+  _guardandoCita = true;
+  const btn = document.getElementById('nc_btn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    if (_ncModo === 'nuevo') {
+      const c = await api('/api/clientes', { method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ nombre: v('nc_n_cliente'), telefono: tel }) });
+      if (!c.ok) { toast(c.error || 'Error creando propietario', 'rojo'); return; }
+      cliente_id = c.id;
+      const p = await api('/api/pacientes', { method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ cliente_id, nombre: v('nc_n_mascota'), especie: v('nc_n_especie'), raza: v('nc_n_raza'), sexo: v('nc_n_sexo'), peso: v('nc_n_peso') || null }) });
+      if (!p.ok) { toast(p.error || 'Error creando mascota', 'rojo'); return; }
+      paciente_id = p.id;
+      if (_ncFotoFile) {
+        const fd = new FormData(); fd.append('foto', _ncFotoFile);
+        await fetch(API + `/api/pacientes/${p.id}/foto`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
+        _ncFotoFile = null;
+      }
+      _clientes = []; _pacientes = []; // forzar recarga
+    } else {
+      // si cambió el teléfono, actualizar el cliente
+      const cli = _clientes.find(x => String(x.id) === String(cliente_id));
+      if (cli && (cli.telefono || '') !== tel) {
+        await api(`/api/clientes/${cli.id}`, { method: 'PUT', headers: authHeaders(),
+          body: JSON.stringify({ nombre: cli.nombre, telefono: tel, email: cli.email, direccion: cli.direccion, documento: cli.documento }) });
+        cli.telefono = tel;
+      }
+    }
+
+    const body = {
+      cliente_id, paciente_id, fecha, hora,
+      motivo: v('nc_servicio'),
+      notas: (horaFin ? `Hasta ${horaFin}. ` : '') + v('nc_notas'),
+    };
+    const d = await api('/api/citas', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+
+    toast('Cita agendada', 'verde');
+    cerrarModal('mNuevaCita');
+    await cargarCitas();
+    if (document.getElementById('nc_wa').checked) whatsappCita(d.id);
+    irAHistoriaNueva(paciente_id, v('nc_servicio'));
+  } finally {
+    _guardandoCita = false;
+    btn.disabled = false; btn.textContent = '✓ Guardar y Agendar Cita';
+  }
+}
+
 async function cambiarEstadoCita(id, estado) {
   const d = await api(`/api/citas/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ estado }) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
@@ -273,77 +395,626 @@ let _pacienteHistoriaActivo = null;
 async function cargarSelectPacientesHistoria() {
   await asegurarPacientesCargados();
   const sel = document.getElementById('hc_paciente_select');
+  const actual = sel.value || window._hcForzado || '';
   sel.innerHTML = '<option value="">— Elige una mascota —</option>' +
     _pacientes.map(p => `<option value="${p.id}">${p.nombre} — ${p.cliente_nombre}</option>`).join('');
+  sel.value = actual;
 }
+let _historias = [];
 async function cargarHistoriaPaciente() {
   const id = document.getElementById('hc_paciente_select').value;
   _pacienteHistoriaActivo = id || null;
   const wrap = document.getElementById('hc_wrap');
   if (!id) { wrap.innerHTML = '<p style="color:var(--ink-soft);font-size:13.5px;">Elige un paciente para ver o registrar su historia clínica.</p>'; return; }
-
   wrap.innerHTML = '<p style="color:var(--ink-soft);font-size:13.5px;">Cargando...</p>';
   const d = await api(`/api/historias/${id}`, { headers: authHeaders() });
-  const historias = d.ok ? d.historias : [];
+  _historias = d.ok ? d.historias : [];
   const paciente = _pacientes.find(p => String(p.id) === String(id));
-
   wrap.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <div><strong>${paciente?.nombre || ''}</strong> <span style="color:var(--ink-soft);font-size:13px;">— ${paciente?.especie || ''} ${paciente?.raza ? '· ' + paciente.raza : ''}</span></div>
       <button class="btn btn-primary btn-sm" onclick="abrirNuevaConsulta()">+ Nueva consulta</button>
     </div>
-    <div id="hc_lista">
-      ${historias.length ? historias.map(h => `
-        <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <strong style="font-size:13.5px;">${fmtFecha(h.fecha)}${h.motivo ? ' — ' + h.motivo : ''}</strong>
-            <button class="btn btn-danger btn-sm" onclick="eliminarConsulta(${h.id})">Eliminar</button>
+    ${_historias.length ? _historias.map(h => {
+      let dj = {}; try { dj = JSON.parse(h.datos_json || '{}'); } catch (e) {}
+      const fh = dj.hx_fecha ? dj.hx_fecha.replace('T', ' ') : String(h.fecha).slice(0, 10);
+      return `<div class="hx-item">
+        <div>
+          <div class="hx-item-t">#${h.id} · ${fh}<span class="hx-ok">Finalizada</span></div>
+          <div class="hx-item-s">${h.motivo || '—'}</div>
+          <div class="hx-item-s">Atendió: ${h.atendio || '—'}</div>
+        </div>
+        <div class="hx-item-b">
+          <button class="hx-b ver" onclick="hxReabrir(${h.id})">👁 Ver / reabrir</button>
+          <button class="hx-b pdf" onclick="hxPdf(${h.id})">⬇ PDF</button>
+          <button class="hx-b del" onclick="eliminarConsulta(${h.id})">✕</button>
+        </div>
+      </div>`;
+    }).join('') : '<p style="color:var(--ink-soft);font-size:13.5px;">Sin consultas registradas aún.</p>'}`;
+}
+
+function hxReabrir(id) {
+  const h = _historias.find(x => x.id === id); if (!h) return;
+  abrirNuevaConsulta(null, h);
+}
+
+function hxPdf(id) {
+  const h = _historias.find(x => x.id === id); if (!h) return;
+  const p = _pacientes.find(x => String(x.id) === String(h.paciente_id)) || {};
+  const f = (l, v) => v ? `<h4>${l}</h4><p style="white-space:pre-line">${v}</p>` : '';
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>Consulta #${h.id}</title><style>body{font-family:Arial;padding:30px;max-width:800px;margin:auto}h4{margin:16px 0 4px;color:#1456b8}</style></head><body>
+    <h2>Historia clínica · Consulta #${h.id}</h2>
+    <p><b>Paciente:</b> ${p.nombre || ''} (${p.especie || ''}) · <b>Propietario:</b> ${p.cliente_nombre || ''}<br>
+    <b>Fecha:</b> ${String(h.fecha).slice(0, 10)} · <b>Atendió:</b> ${h.atendio || ''}</p>
+    ${f('Motivo', h.motivo)}
+    ${f('Constantes', [h.peso && 'Peso: ' + h.peso + ' kg', h.temperatura && 'Temp: ' + h.temperatura + ' °C', h.fc && 'FC: ' + h.fc, h.fr && 'FR: ' + h.fr].filter(Boolean).join(' · '))}
+    ${f('Anamnesis y examen', h.anamnesis)}${f('Diagnóstico', h.diagnostico)}${f('Plan', h.tratamiento)}
+    ${f('Tratamiento', h.medicamentos)}${f('Recomendaciones', h.recomendaciones)}
+    ${h.proximo_control ? f('Próximo control', String(h.proximo_control).slice(0, 10)) : ''}
+    <script>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+
+
+// PEGA TODO ESTE BLOQUE en su lugar. (hxBorrador, hxReabrir, hxPdf, irAHistoriaNueva… se quedan igual)
+// ══════════════════════════════════════════════════════════════
+const HX_IDS = ['hx_fecha','hx_motivo','hx_sint','hx_exam','hx_diag','hx_trat','hx_plandx',
+  'hx_peso','hx_temp','hx_fc','hx_fr','hx_spo2','hx_pa','hx_cc','hx_tllc','hx_refl','hx_pulso','hx_muc',
+  'hx_proximo','hx_hora','hx_tipo_cita','hx_motivo_ctrl','hx_h_ingreso','hx_h_area','hx_h_motivo'];
+const hxV = id => (document.getElementById(id)?.value || '').trim();
+const hxEl = id => document.getElementById(id);
+ 
+let _hxEditId = null;
+let _hxRx = [];       // receta: [{producto_id, nombre, precio, stock, cantidad, dosis, frecuencia}]
+let _hxPend = [];     // PDFs de laboratorio pendientes de subir (File)
+let _hxExist = [];    // PDFs ya guardados de esta consulta
+let _hxHosp = false;  // ¿se hospitaliza?
+ 
+async function asegurarProductos(forzar = false) {
+  if (forzar || !_productos.length) {
+    const d = await api('/api/productos', { headers: authHeaders() });
+    _productos = d.ok ? d.productos : [];
+    window._prodErr = d.ok ? '' : (d.error || 'Error desconocido');
+  }
+}
+function hxSet(id, val) {
+  const el = hxEl(id); if (!el || val == null || val === '') return;
+  if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === val)) el.add(new Option(val, val));
+  el.value = val;
+}
+ 
+async function abrirNuevaConsulta(motivo, h) {
+  if (!_pacienteHistoriaActivo) return;
+     await asegurarProductos(true);
+  _hxEditId = h ? h.id : null; _hxRx = []; _hxPend = []; _hxExist = []; _hxHosp = false;
+  const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
+  const ahora = new Date(); ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+  const ahoraStr = ahora.toISOString().slice(0, 16);
+  const ta = (id, l, ph = '', r = 2, req = false) => `<div class="hx-f"><label>${l}${req ? ' <i>*</i>' : ''}</label><textarea id="${id}" rows="${r}" placeholder="${ph}"></textarea></div>`;
+  const inp = (id, l, t = 'text') => `<div class="hx-f"><label>${l}</label><input type="${t}" ${t === 'number' ? 'step="0.01"' : ''} id="${id}"></div>`;
+  const opts = a => a.map(o => `<option>${o}</option>`).join('');
+ 
+  hxEl('hc_wrap').innerHTML = `
+    <div class="hx-head">
+      <h3>Historia clínica · ${h ? 'Consulta #' + h.id : 'Nueva consulta'}</h3>
+      <div class="hx-head-row">
+        <div class="hx-pill">Paciente<b>${p.nombre || ''}</b></div>
+        <div class="hx-pill">Propietario<b>${p.cliente_nombre || ''}</b></div>
+      </div>
+    </div>
+ 
+    <div class="hx-layout hx-layout2">
+      <!-- ═════════ IZQUIERDA ═════════ -->
+      <div class="hx-col">
+        <div class="hx-card">
+          <h4>Detalles clínicos</h4>
+          <div class="hx-g3">
+            <div class="hx-f"><label>Fecha y hora <i>*</i></label><input type="datetime-local" id="hx_fecha" value="${ahoraStr}"></div>
+            <div class="hx-f"><label>Médico veterinario</label><input type="text" value="${user.nombre || ''}" disabled></div>
+            <div class="hx-f"><label>Motivo de consulta <i>*</i></label><select id="hx_motivo">${opts(['Consulta General','Vacunación','Control','Desparasitación','Cirugía','Emergencia','Otro'])}</select></div>
           </div>
-          <div style="font-size:13px;color:var(--ink-soft);line-height:1.7;">
-            ${h.peso ? `<div><strong>Peso:</strong> ${h.peso} kg</div>` : ''}
-            ${h.temperatura ? `<div><strong>Temp:</strong> ${h.temperatura} °C</div>` : ''}
-            ${h.diagnostico ? `<div><strong>Diagnóstico:</strong> ${h.diagnostico}</div>` : ''}
-            ${h.tratamiento ? `<div><strong>Tratamiento:</strong> ${h.tratamiento}</div>` : ''}
-            ${h.medicamentos ? `<div><strong>Medicamentos:</strong> ${h.medicamentos}</div>` : ''}
-            ${h.recomendaciones ? `<div><strong>Recomendaciones:</strong> ${h.recomendaciones}</div>` : ''}
-            ${h.proximo_control ? `<div><strong>Próximo control:</strong> ${fmtFecha(h.proximo_control)}</div>` : ''}
+          ${ta('hx_sint', 'Síntomas', 'Ej. No come', 3, true)}
+          ${ta('hx_exam', 'Examen físico clínico')}
+          ${ta('hx_diag', 'Diagnóstico', '', 2, true)}
+          ${ta('hx_plandx', 'Plan diagnóstico (opcional)')}
+        </div>
+ 
+        <div class="hx-card">
+          <h4>❤️ Constantes vitales</h4>
+          <div class="hx-g3">
+            ${inp('hx_peso', 'Peso (kg)', 'number')}${inp('hx_temp', 'Temp (°C)', 'number')}${inp('hx_fc', 'F. Card. (lpm)')}
+            ${inp('hx_fr', 'F. Resp. (rpm)')}${inp('hx_spo2', 'Sat. O₂ (%)')}${inp('hx_pa', 'Presión art.')}
+          </div>
+          <div class="hx-g3">
+            <div class="hx-f"><label>Cond. corporal (ICC)</label><select id="hx_cc"><option value="">Selecciona...</option>${[1,2,3,4,5,6,7,8,9].map(n => `<option>${n}</option>`).join('')}</select></div>
+            ${inp('hx_tllc', 'TLLC')}${inp('hx_refl', 'Reflejos')}
+            ${inp('hx_pulso', 'Pulso')}${inp('hx_muc', 'Mucosas')}
           </div>
         </div>
-      `).join('') : '<p style="color:var(--ink-soft);font-size:13.5px;">Sin consultas registradas aún.</p>'}
+ 
+        <div class="hx-card">
+          <h4>📅 Próxima visita <span class="hx-tag">Agenda</span></h4>
+          <div class="hx-g2">
+            ${inp('hx_proximo', 'Fecha', 'date')}
+            <div class="hx-f"><label>Hora</label><input type="time" id="hx_hora" value="09:00"></div>
+            <div class="hx-f"><label>Tipo de cita</label><select id="hx_tipo_cita">${opts(['Control / Revisión','Vacunación','Cirugía','Otro'])}</select></div>
+            ${inp('hx_motivo_ctrl', 'Motivo')}
+          </div>
+          <p class="hx-note">Si pones fecha, la cita se agenda automáticamente al guardar.</p>
+        </div>
+ 
+        <button type="button" class="hx-hosp-btn" id="hx_hosp_btn" onclick="hxToggleHosp()">🏥 Hospitalizar paciente</button>
+        <div class="hx-card" id="hx_hosp_panel" style="display:none;">
+          <h4>Hospitalización</h4>
+          <div class="hx-g2">
+            <div class="hx-f"><label>Ingreso</label><input type="datetime-local" id="hx_h_ingreso" value="${ahoraStr}"></div>
+            ${inp('hx_h_area', 'Jaula / Área')}
+          </div>
+          ${ta('hx_h_motivo', 'Motivo de ingreso')}
+        </div>
+      </div>
+ 
+      <!-- ═════════ DERECHA ═════════ -->
+      <div class="hx-col">
+        <div class="hx-card">
+          <h4>Receta médica <span class="hx-tag">Inventario</span></h4>
+          <div class="hx-f" style="position:relative;">
+            <label>Buscar medicamento en inventario</label>
+          <input type="text" id="hx_rx_q" placeholder="Escribe el nombre..." autocomplete="off" oninput="hxRxBuscar(this.value)" onfocus="hxRxBuscar(this.value)" onblur="setTimeout(()=>{const b=hxEl('hx_rx_sug'); if(b) b.innerHTML='';},150)">
+            <div id="hx_rx_sug" class="hx-sug-box"></div>
+            
+          </div>
+          
+          <div id="hx_rx_lista"></div>
+          ${ta('hx_trat', 'Plan terapéutico / indicaciones', 'Dieta, cuidados en casa, observaciones...', 3, true)}
+          <label class="hc-check" style="margin-top:6px;"><input type="checkbox" id="hx_venta" checked> Registrar venta (pendiente de cobro) y descontar del inventario</label>
+        <div class="hx-rx-actions">
+  <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">💾 Guardar receta</button>
+  <button type="button" class="btn" id="hx_rx_wa" style="background:#25D366;color:#fff;" onclick="hxGuardarReceta(true)">Guardar y enviar por WhatsApp</button>
+</div>
+<div id="hx_recetas"></div>
+          </div>
+ 
+        <div class="hx-card">
+          <h4>🧪 Laboratorio</h4>
+          <div class="hx-drop" id="hx_drop" onclick="hxEl('hx_file').click()">Arrastra PDFs aquí o haz clic para subirlos</div>
+          <input type="file" id="hx_file" accept="application/pdf" multiple style="display:none;" onchange="hxAddFiles(this.files);this.value=''">
+          <div id="hx_files"></div>
+        </div>
+      </div>
     </div>
-  `;
+ 
+    <div class="hx-actions">
+      <button class="btn btn-ghost" onclick="cargarHistoriaPaciente()">Cancelar</button>
+      <button class="btn btn-ghost" onclick="hxBorrador()">💾 Guardar borrador</button>
+      <button class="btn-final" id="hx_btn" onclick="guardarConsulta()">${h ? '✓ Guardar cambios' : '✓ Registrar consulta'}</button>
+    </div>`;
+ 
+  // drag & drop de PDFs
+  const dz = hxEl('hx_drop');
+  ['dragover', 'dragenter'].forEach(n => dz.addEventListener(n, e => { e.preventDefault(); dz.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(n => dz.addEventListener(n, e => { e.preventDefault(); dz.classList.remove('over'); }));
+  dz.addEventListener('drop', e => hxAddFiles(e.dataTransfer.files));
+ 
+  // precargar
+  if (h) {
+    let dj = null; try { dj = JSON.parse(h.datos_json || 'null'); } catch (e) {}
+    if (dj) {
+      // compatibilidad con consultas guardadas con el formato anterior
+      const m = { hx_sint: dj.hx_sint ?? dj.hx_anam, hx_diag: dj.hx_diag ?? (dj.hx_def || dj.hx_pres),
+                  hx_trat: dj.hx_trat ?? dj.hx_reco, hx_plandx: dj.hx_plandx ?? dj.hx_examcomp };
+      HX_IDS.forEach(id => hxSet(id, m[id] ?? dj[id]));
+      _hxRx = Array.isArray(dj._rx) ? dj._rx : [];
+    } else {
+      hxSet('hx_motivo', h.motivo); hxSet('hx_sint', h.anamnesis); hxSet('hx_peso', h.peso); hxSet('hx_temp', h.temperatura);
+      hxSet('hx_fc', h.fc); hxSet('hx_fr', h.fr); hxSet('hx_diag', h.diagnostico); hxSet('hx_trat', h.recomendaciones);
+      hxSet('hx_fecha', String(h.fecha).slice(0, 10) + 'T08:00');
+    }
+    hxEl('hx_venta').checked = false; // la venta ya se registró al crear la consulta
+    const f = await api('/api/historia-archivos/' + h.id, { headers: authHeaders() });
+    _hxExist = f.ok ? f.archivos : [];
+  } else {
+    try {
+      const d = JSON.parse(localStorage.getItem('hx_draft_' + _pacienteHistoriaActivo) || 'null');
+      if (d) HX_IDS.forEach(id => hxSet(id, d[id]));
+    } catch (e) {}
+    if (!hxV('hx_peso') && p.peso) hxEl('hx_peso').value = p.peso;
+    if (motivo) hxSet('hx_motivo', motivo);
+  }
+  hxRxRender(); hxFilesRender(); hxRecetasCargar();
+  hxEl('hc_wrap').scrollIntoView({ behavior: 'smooth' });
 }
-function abrirNuevaConsulta() {
-  if (!_pacienteHistoriaActivo) return;
-  document.getElementById('mConsultaSub').textContent = 'Registro de historia clínica';
-  ['hc_fecha', 'hc_proximo', 'hc_motivo', 'hc_anamnesis', 'hc_peso', 'hc_temp', 'hc_fc', 'hc_fr', 'hc_diagnostico', 'hc_tratamiento', 'hc_medicamentos', 'hc_recomendaciones']
-    .forEach(id => document.getElementById(id).value = '');
-  document.getElementById('hc_fecha').value = new Date().toISOString().slice(0, 10);
-  abrirModal('mConsulta');
+ 
+// ── Hospitalización ─────────────────────────────────────────
+function hxToggleHosp() {
+  _hxHosp = !_hxHosp;
+  hxEl('hx_hosp_panel').style.display = _hxHosp ? '' : 'none';
+  const b = hxEl('hx_hosp_btn');
+  b.classList.toggle('on', _hxHosp);
+  b.textContent = _hxHosp ? '✔ Paciente a hospitalizar (quitar)' : '🏥 Hospitalizar paciente';
 }
-async function guardarConsulta() {
-  const body = {
-    paciente_id: _pacienteHistoriaActivo,
-    fecha: document.getElementById('hc_fecha').value,
-    proximo_control: document.getElementById('hc_proximo').value || null,
-    motivo: document.getElementById('hc_motivo').value.trim(),
-    anamnesis: document.getElementById('hc_anamnesis').value.trim(),
-    peso: document.getElementById('hc_peso').value || null,
-    temperatura: document.getElementById('hc_temp').value || null,
-    fc: document.getElementById('hc_fc').value.trim(),
-    fr: document.getElementById('hc_fr').value.trim(),
-    diagnostico: document.getElementById('hc_diagnostico').value.trim(),
-    tratamiento: document.getElementById('hc_tratamiento').value.trim(),
-    medicamentos: document.getElementById('hc_medicamentos').value.trim(),
-    recomendaciones: document.getElementById('hc_recomendaciones').value.trim(),
-  };
-  if (!body.fecha) { toast('La fecha es obligatoria', 'rojo'); return; }
-  const d = await api('/api/historias', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+ 
+// ── Receta conectada a inventario ───────────────────────────
+const _norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+ 
+function hxRxBuscar(t) {
+  const box = hxEl('hx_rx_sug'), q = _norm(String(t).trim());
+  if (window._prodErr) {
+    box.innerHTML = `<div class="hx-sug"><small>No se pudo cargar el inventario: ${window._prodErr}</small></div>`;
+    return;
+  }
+  const r = _productos
+    .filter(p => p.activo != 0 && (!q || _norm(p.nombre).includes(q) || _norm(p.marca).includes(q)))
+    .slice(0, 8);
+  box.innerHTML = r.length
+    ? r.map(p => {
+        const agot = Number(p.stock) <= 0;
+        const accion = agot ? '' : `hxRxAdd(${p.id})`;
+        return `<div class="hx-sug${agot ? ' off' : ''}" onmousedown="event.preventDefault();${accion}">
+          <span>${p.nombre}${p.marca ? ' · ' + p.marca : ''}</span>
+          <small>${fmtMoney(p.precio_venta)} · ${agot ? 'Agotado' : 'stock ' + p.stock}</small></div>`;
+      }).join('')
+    : '<div class="hx-sug"><small>Sin resultados en el inventario</small></div>';
+}
+function hxRxAdd(id) {
+  const p = _productos.find(x => x.id === id); if (!p) return;
+  if (!_hxRx.some(x => x.producto_id === id))
+    _hxRx.push({ producto_id: p.id, nombre: p.nombre, precio: Number(p.precio_venta), stock: Number(p.stock), cantidad: 1, dosis: '', frecuencia: '' });
+  hxEl('hx_rx_q').value = ''; hxEl('hx_rx_sug').innerHTML = '';
+  hxRxRender();
+}
+function hxRxSet(i, k, v) {
+  _hxRx[i][k] = k === 'cantidad' ? Math.max(1, parseInt(v) || 1) : v;
+  if (k === 'cantidad') hxRxRender();
+}
+function hxRxDel(i) { _hxRx.splice(i, 1); hxRxRender(); }
+function hxRxRender() {
+  const box = hxEl('hx_rx_lista');
+  if (!_hxRx.length) { box.innerHTML = '<div class="hx-empty">Aún no hay medicamentos en la receta</div>'; return; }
+  const total = _hxRx.reduce((a, x) => a + x.precio * x.cantidad, 0);
+  box.innerHTML = _hxRx.map((x, i) => {
+    const sobre = x.cantidad > x.stock;
+    return `<div class="hx-rx">
+      <div class="hx-rx-top"><b>${x.nombre}</b><button type="button" onclick="hxRxDel(${i})" aria-label="Quitar">×</button></div>
+      <div class="hx-g3">
+        <div class="hx-f"><label>Cantidad</label><input type="number" min="1" value="${x.cantidad}" onchange="hxRxSet(${i},'cantidad',this.value)"></div>
+        <div class="hx-f"><label>Dosis</label><input type="text" value="${x.dosis}" placeholder="1 tab" oninput="hxRxSet(${i},'dosis',this.value)"></div>
+        <div class="hx-f"><label>Frecuencia / días</label><input type="text" value="${x.frecuencia}" placeholder="c/12h x 7d" oninput="hxRxSet(${i},'frecuencia',this.value)"></div>
+      </div>
+      <div class="hx-stock ${sobre || x.stock <= 5 ? 'low' : ''}">${sobre ? 'Cantidad mayor al stock disponible (' + x.stock + ')' : 'Stock disponible: ' + x.stock} · ${fmtMoney(x.precio * x.cantidad)}</div>
+    </div>`;
+  }).join('') + `<div class="hx-rx-total">Total receta: <b>${fmtMoney(total)}</b></div>`;
+}
+ 
+// ── Laboratorio (PDF) ───────────────────────────────────────
+function hxAddFiles(list) {
+  [...list].forEach(f => {
+    if (f.type !== 'application/pdf') { toast(`${f.name}: solo PDF`, 'rojo'); return; }
+    if (f.size > 10 * 1024 * 1024) { toast(`${f.name}: máximo 10 MB`, 'rojo'); return; }
+    _hxPend.push(f);
+  });
+  hxFilesRender();
+}
+function hxFilesRender() {
+  hxEl('hx_files').innerHTML =
+    _hxExist.map(a => `<div class="hx-file"><a href="${a.url}" target="_blank" rel="noopener">📄 ${a.nombre}</a><button type="button" onclick="hxDelExist(${a.id})" aria-label="Eliminar">×</button></div>`).join('') +
+    _hxPend.map((f, i) => `<div class="hx-file"><span>📄 ${f.name} <small>(${Math.round(f.size / 1024)} KB · se sube al guardar)</small></span><button type="button" onclick="_hxPend.splice(${i},1);hxFilesRender()" aria-label="Quitar">×</button></div>`).join('');
+}
+async function hxDelExist(id) {
+  if (!confirm('¿Eliminar este PDF?')) return;
+  const d = await api('/api/historia-archivos/' + id, { method: 'DELETE', headers: authHeaders() });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Consulta registrada', 'verde');
-  cerrarModal('mConsulta');
-  cargarHistoriaPaciente();
+  _hxExist = _hxExist.filter(a => a.id !== id); hxFilesRender();
 }
+async function hxSubirPdfs(historiaId) {
+  let fallos = 0;
+  for (const f of _hxPend) {
+    const fd = new FormData(); fd.append('archivo', f);
+    try {
+      const r = await fetch(API + `/api/historia-archivos/${historiaId}`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
+      const d = await r.json(); if (!d.ok) fallos++;
+    } catch (e) { fallos++; }
+  }
+  _hxPend = [];
+  if (fallos) toast(`${fallos} PDF no se pudieron subir`, 'rojo');
+}
+
+
+const RX_CLINICA = {
+  nombre: '',      // vacío = usa el nombre de la clínica de tu cuenta
+  logo: '',        // opcional: URL de tu logo (por ejemplo, subido a Cloudinary)
+  registro: '',    // ej. '1018-12-1185645'  (Reg. Senecyt)
+  direccion: '',   // ej. 'FERTIZA C. 54 S-O - Don San Juan Bosco'
+  telefono: '',    // ej. '0 98 458 6114'
+};
+ 
+let _hxRecetas = [];
+let _guardandoRx = false;
+ 
+// ── Imagen de la receta (se dibuja en el navegador) ─────────
+function rxCargarLogo() {
+  return new Promise(res => {
+    if (!RX_CLINICA.logo) return res(null);
+    const im = new Image(); im.crossOrigin = 'anonymous';
+    im.onload = () => res(im); im.onerror = () => res(null); im.src = RX_CLINICA.logo;
+  });
+}
+function rxWrap(ctx, text, maxW) {
+  const out = [];
+  String(text || '').split('\n').forEach(par => {
+    let line = '';
+    par.split(' ').forEach(w => {
+      const t = line ? line + ' ' + w : w;
+      if (ctx.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t;
+    });
+    out.push(line);
+  });
+  return out;
+}
+// Dibuja la receta; devuelve la altura final necesaria
+function rxPintar(ctx, W, H, d) {
+  const M = 60, MW = W - M * 2;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'; ctx.fillStyle = '#111';
+ 
+  // Encabezado
+  if (d.logo) {
+    const h = Math.min(120, d.logo.height), w = d.logo.width * h / d.logo.height, k = Math.min(1, 380 / w);
+    ctx.drawImage(d.logo, M, 50, w * k, h * k);
+  } else {
+    ctx.font = 'bold 40px Arial'; ctx.fillStyle = '#0f6b4f';
+    ctx.fillText(d.clinica, M, 110); ctx.fillStyle = '#111';
+  }
+  ctx.font = '22px Arial'; ctx.textAlign = 'center';
+  let hy = 95;
+  d.cabecera.forEach(t => rxWrap(ctx, t, 640).forEach(l => { ctx.fillText(l, 810, hy); hy += 30; }));
+  ctx.textAlign = 'left';
+ 
+  // Datos del paciente
+  const par = (l, v, x, y, derecha) => {
+    ctx.font = 'bold 26px Arial'; const wl = ctx.measureText(l).width;
+    ctx.font = '26px Arial'; const wv = ctx.measureText(' ' + v).width;
+    const x0 = derecha ? x - wl - wv : x;
+    ctx.font = 'bold 26px Arial'; ctx.fillText(l, x0, y);
+    ctx.font = '26px Arial'; ctx.fillText(' ' + v, x0 + wl, y);
+  };
+  par('Fecha:', d.fecha, M, 270); par('Receta Nº:', d.numero, M, 306);
+  par('Paciente:', d.paciente, M, 342); par('ID Mascota:', d.idMascota, M, 378);
+  par('Edad:', d.edad, W - M, 330, true); par('Peso:', d.peso, W - M, 366, true);
+ 
+  ctx.strokeStyle = '#0f3a5f'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(M, 420); ctx.lineTo(W - M, 420); ctx.stroke();
+ 
+  // Prescripción (izquierda) e indicaciones (derecha)
+  const GAP = 60, CW = (MW - GAP) / 2, X2 = M + CW + GAP;
+  const bloque = (titulo, texto, x) => {
+    let y = 470;
+    ctx.font = 'bold 28px Arial'; ctx.fillStyle = '#111'; ctx.fillText(titulo, x, y); y += 38;
+    ctx.font = '26px Arial';
+    rxWrap(ctx, texto || '—', CW).forEach(l => { ctx.fillText(l, x, y); y += 36; });
+    return y;
+  };
+  const y1 = bloque('PRESCRIPCIÓN:', d.prescripcion, M);
+  const y2 = bloque('INDICACIONES (Posología):', d.indicaciones, X2);
+  const y = Math.max(y1, y2) + 22;
+ 
+  ctx.strokeStyle = '#d0d7de'; ctx.lineWidth = 2;               // separador entre columnas
+  ctx.beginPath(); ctx.moveTo(M + CW + GAP / 2, 450); ctx.lineTo(M + CW + GAP / 2, y - 10); ctx.stroke();
+ 
+  // Pie: médico abajo a la izquierda, firma a la derecha
+  const fy = Math.max(y + 60, 700);
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 2; ctx.setLineDash([2, 6]);
+  ctx.beginPath(); ctx.moveTo(W - M - 420, fy); ctx.lineTo(W - M, fy); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = '24px Arial'; ctx.textAlign = 'center'; ctx.fillStyle = '#333';
+  ctx.fillText('[ Firma y Sello del Médico ]', W - M - 210, fy + 34);
+ 
+  ctx.textAlign = 'left'; ctx.fillStyle = '#111';
+  d.medico.forEach((t, i) => { ctx.font = (i === 0 ? 'bold ' : '') + '24px Arial'; ctx.fillText(t, M, fy + 34 + i * 30); });
+  return fy + 40 + d.medico.length * 30;
+}
+async function rxDibujar(d) {
+  d.logo = await rxCargarLogo();
+  const W = 1200, c = document.createElement('canvas');
+  c.width = W; c.height = 4000;
+  const alto = rxPintar(c.getContext('2d'), W, 4000, d);   // 1.ª pasada: mide
+  c.height = alto;
+  rxPintar(c.getContext('2d'), W, alto, d);                // 2.ª pasada: dibuja
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+ 
+// ── Guardar receta ──────────────────────────────────────────
+async function hxGuardarReceta(enviarWA) {
+  if (_guardandoRx) return;
+  const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
+  if (!_hxRx.length && !hxV('hx_trat')) { toast('Agrega medicamentos o indicaciones a la receta', 'rojo'); return; }
+ 
+  const fechaIso = hxV('hx_fecha').slice(0, 10) || ymd(new Date());
+  const presc = _hxRx.map((x, i) => `${i + 1}. ${x.nombre}\nCantidad: ${x.cantidad}`).join('\n');
+  const indic = [
+    ..._hxRx.filter(x => x.dosis || x.frecuencia).map(x => `- ${x.nombre}: ${[x.dosis, x.frecuencia].filter(Boolean).join(' ')}`),
+    hxV('hx_trat'),
+  ].filter(Boolean).join('\n');
+ 
+  const w = enviarWA ? window.open('', '_blank') : null; // se abre ya para que el navegador no lo bloquee
+  _guardandoRx = true;
+  const b1 = hxEl('hx_rx_save'), b2 = hxEl('hx_rx_wa');
+  [b1, b2].forEach(b => b && (b.disabled = true));
+  let recetaId = null;
+  try {
+    const r = await api('/api/recetas', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+      paciente_id: _pacienteHistoriaActivo, historia_id: _hxEditId, fecha: fechaIso, prescripcion: presc, indicaciones: indic }) });
+    if (!r.ok) throw new Error(r.error || 'No se pudo crear la receta');
+    recetaId = r.id;
+ 
+    const anio = fechaIso.slice(0, 4);
+    const blob = await rxDibujar({
+      clinica: RX_CLINICA.nombre || user.nombre_clinica || 'Clínica veterinaria',
+      cabecera: [[RX_CLINICA.direccion && 'Dirección: ' + RX_CLINICA.direccion, RX_CLINICA.telefono && 'Telf: ' + RX_CLINICA.telefono].filter(Boolean).join(' - ')].filter(Boolean),
+      medico: [`MVZ: ${user.nombre || ''}`, RX_CLINICA.registro && `Reg. Senecyt Nº: ${RX_CLINICA.registro}`].filter(Boolean),
+      fecha: fechaIso.split('-').reverse().join('/'),
+      numero: String(r.numero).padStart(5, '0'),
+      paciente: p.nombre || '',
+      idMascota: `VC-${anio}-${String(p.id || 0).padStart(5, '0')}`,
+      edad: edadPaciente(p.fecha_nacimiento).replace('—', '-'),
+      peso: (hxV('hx_peso') || p.peso) ? (hxV('hx_peso') || p.peso) + ' kg' : '-',
+      prescripcion: presc, indicaciones: indic,
+    });
+ 
+    const fd = new FormData(); fd.append('imagen', blob, `receta-${r.numero}.png`);
+    const res = await fetch(API + `/api/recetas/${r.id}/imagen`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
+    const up = await res.json();
+    if (!up.ok) throw new Error(up.error || 'No se pudo subir la imagen');
+ 
+    toast('Receta guardada', 'verde');
+    await hxRecetasCargar();
+ 
+    if (enviarWA) {
+      const tel = telefonoWhatsApp(p.cliente_telefono);
+      if (!tel) { toast('El propietario no tiene teléfono registrado', 'rojo'); w && w.close(); }
+      else {
+        const msg = `Hola ${p.cliente_nombre || ''} 👋, le enviamos la receta de *${p.nombre || 'su mascota'}*: ${up.imagen_url} 🐾`;
+        w.location = `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`;
+      }
+    }
+  } catch (e) {
+    if (recetaId) api('/api/recetas/' + recetaId, { method: 'DELETE', headers: authHeaders() }); // no dejar recetas sin imagen
+    toast(e.message || 'Error guardando la receta', 'rojo');
+    w && w.close();
+  } finally {
+    _guardandoRx = false;
+    [b1, b2].forEach(b => b && (b.disabled = false));
+  }
+}
+ 
+// ── Recetas guardadas (salen debajo de la receta) ───────────
+async function hxRecetasCargar() {
+  if (!_pacienteHistoriaActivo) return;
+  const d = await api('/api/recetas?paciente_id=' + _pacienteHistoriaActivo, { headers: authHeaders() });
+  _hxRecetas = d.ok ? d.recetas : [];
+  hxRecetasRender();
+}
+function hxRecetasRender() {
+  const box = hxEl('hx_recetas'); if (!box) return;
+  box.innerHTML = _hxRecetas.length
+    ? '<div class="hx-rec-titulo">Recetas guardadas</div>' + _hxRecetas.map(r => `
+      <div class="hx-rec">
+        <div class="hx-rec-top">
+          <b>Receta Nº ${String(r.numero).padStart(5, '0')}</b>
+          <span>${fmtFecha(r.fecha)} <button type="button" onclick="hxRecetaDel(${r.id})" aria-label="Eliminar receta">×</button></span>
+        </div>
+        <a href="${r.imagen_url}" target="_blank" rel="noopener"><img src="${r.imagen_url}" alt="Receta ${r.numero}" loading="lazy"></a>
+      </div>`).join('')
+    : '';
+}
+async function hxRecetaDel(id) {
+  if (!confirm('¿Eliminar esta receta?')) return;
+  const d = await api('/api/recetas/' + id, { method: 'DELETE', headers: authHeaders() });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  await hxRecetasCargar();
+}
+ 
+// ── Guardar ─────────────────────────────────────────────────
+let _guardandoHx = false;
+async function guardarConsulta() {
+  if (_guardandoHx) return;
+  const v = hxV;
+  const fecha = v('hx_fecha').slice(0, 10);
+  if (!fecha || !v('hx_motivo')) { toast('Fecha y motivo de consulta son obligatorios', 'rojo'); return; }
+  if (!v('hx_sint') || !v('hx_diag') || !v('hx_trat')) { toast('Completa síntomas, diagnóstico y plan terapéutico', 'rojo'); return; }
+  const editando = !!_hxEditId;
+  const sobre = _hxRx.find(x => x.cantidad > x.stock);
+  if (!editando && hxEl('hx_venta').checked && sobre) { toast(`Stock insuficiente de ${sobre.nombre}`, 'rojo'); return; }
+ 
+  const j = pares => pares.filter(([, x]) => x).map(([l, x]) => `${l}: ${x}`).join('\n');
+  const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
+  const rxTxt = _hxRx.map(x => `${x.nombre} x${x.cantidad}${x.dosis ? ' — ' + x.dosis : ''}${x.frecuencia ? ' — ' + x.frecuencia : ''}`).join('\n');
+  const datos = Object.fromEntries(HX_IDS.map(id => [id, hxEl(id)?.value || '']));
+  datos._rx = _hxRx;
+ 
+  const body = {
+    paciente_id: _pacienteHistoriaActivo, fecha,
+    proximo_control: v('hx_proximo') || null,
+    motivo: v('hx_motivo'),
+    anamnesis: j([['Síntomas', v('hx_sint')], ['Examen físico', v('hx_exam')],
+      ['Sat. O₂', v('hx_spo2')], ['Presión arterial', v('hx_pa')], ['Condición corporal', v('hx_cc')],
+      ['TLLC', v('hx_tllc')], ['Reflejos', v('hx_refl')], ['Pulso', v('hx_pulso')], ['Mucosas', v('hx_muc')]]),
+    peso: v('hx_peso') || null, temperatura: v('hx_temp') || null, fc: v('hx_fc'), fr: v('hx_fr'),
+    diagnostico: v('hx_diag'),
+    tratamiento: j([['Plan diagnóstico', v('hx_plandx')]]),
+    medicamentos: rxTxt,
+    recomendaciones: v('hx_trat'),
+    datos_json: JSON.stringify(datos),
+  };
+ 
+  _guardandoHx = true;
+  const btn = hxEl('hx_btn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    const d = editando
+      ? await api(`/api/historias/${_hxEditId}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) })
+      : await api('/api/historias', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    const historiaId = editando ? _hxEditId : d.id;
+ 
+    // PDFs de laboratorio
+    if (_hxPend.length) await hxSubirPdfs(historiaId);
+ 
+    // Venta pendiente + descuento de inventario (solo consulta nueva)
+    if (!editando && hxEl('hx_venta').checked && _hxRx.length) {
+      const ve = await api('/api/ventas', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+        cliente_id: p.cliente_id || null, paciente_id: _pacienteHistoriaActivo,
+        items: _hxRx.map(x => ({ producto_id: x.producto_id, nombre: x.nombre, precio: x.precio, cantidad: x.cantidad })),
+        descuento: 0, metodo_pago: 'efectivo', estado_pago: 'pendiente' }) });
+      if (!ve.ok) toast('Consulta guardada, pero la venta falló: ' + (ve.error || ''), 'rojo');
+    }
+ 
+    // Hospitalización
+    if (_hxHosp) {
+      await api('/api/hospitalizaciones', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+        paciente_id: _pacienteHistoriaActivo, historia_id: historiaId,
+        ingreso: v('hx_h_ingreso'), area: v('hx_h_area'), motivo: v('hx_h_motivo') }) });
+    }
+ 
+    // Próxima cita en agenda (solo consulta nueva)
+    if (!editando && v('hx_proximo')) {
+      await api('/api/citas', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+        cliente_id: p.cliente_id || null, paciente_id: _pacienteHistoriaActivo,
+        fecha: v('hx_proximo'), hora: v('hx_hora') || null,
+        motivo: v('hx_motivo_ctrl') || v('hx_tipo_cita') || 'Control', notas: '' }) });
+    }
+ 
+    localStorage.removeItem('hx_draft_' + _pacienteHistoriaActivo);
+    toast(editando ? 'Consulta actualizada' : 'Consulta registrada', 'verde');
+    _hxEditId = null;
+    cargarHistoriaPaciente();
+  } finally {
+    _guardandoHx = false;
+    btn.disabled = false; btn.textContent = _hxEditId ? '✓ Guardar cambios' : '✓ Registrar consulta';
+  }
+}
+
+
+
+
+
+function hxBorrador() {
+  const d = {}; HX_IDS.forEach(id => d[id] = document.getElementById(id)?.value || '');
+  localStorage.setItem('hx_draft_' + _pacienteHistoriaActivo, JSON.stringify(d));
+  toast('Borrador guardado', 'verde');
+}
+
+async function irAHistoriaNueva(pid, motivo) {
+  window._hcForzado = String(pid);
+  await asegurarPacientesCargados();
+  ir('historia');
+  await cargarSelectPacientesHistoria();
+  document.getElementById('hc_paciente_select').value = pid;
+  await cargarHistoriaPaciente();
+  window._hcForzado = '';
+  abrirNuevaConsulta(motivo);
+}
+
 async function eliminarConsulta(id) {
   if (!confirm('¿Eliminar esta consulta del historial?')) return;
   const d = await api(`/api/historias/${id}`, { method: 'DELETE', headers: authHeaders() });
@@ -351,7 +1022,6 @@ async function eliminarConsulta(id) {
   toast('Consulta eliminada', 'verde');
   cargarHistoriaPaciente();
 }
-
 // ══════════════════════════════════════════════════════════════
 // INVENTARIO (solo lectura, mismo diseño del propietario)
 // ══════════════════════════════════════════════════════════════
@@ -566,35 +1236,67 @@ async function cargarReportes() {
 // FICHA DEL PACIENTE
 // ══════════════════════════════════════════════════════════════
 let _fpPacienteActivo = null;
-async function abrirFichaPaciente(id) {
-  await asegurarPacientesCargados();
-  _fpPacienteActivo = _pacientes.find(p => p.id === id);
-  if (!_fpPacienteActivo) return;
-  document.getElementById('fp_nombre').textContent = _fpPacienteActivo.nombre;
-  document.getElementById('fp_sub').textContent = `${_fpPacienteActivo.especie || ''} ${_fpPacienteActivo.raza ? '· ' + _fpPacienteActivo.raza : ''} — Tutor: ${_fpPacienteActivo.cliente_nombre}`;
-  document.getElementById('fp_avatar').innerHTML = _fpPacienteActivo.foto_url
-    ? `<img src="${_fpPacienteActivo.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;">`
-    : (_fpPacienteActivo.especie?.toLowerCase().includes('gat') ? '🐱' : '🐶');
-  cambiarTabFicha('resumen');
-  abrirModal('mFichaPaciente');
+function fpPintarAvatar() {
+  const p = _fpPacienteActivo;
+  document.getElementById('fp_avatar').innerHTML = p.foto_url
+    ? `<img src="${p.foto_url}" style="width:100%;height:100%;object-fit:cover;">`
+    : (p.especie?.toLowerCase().includes('gat') ? '🐱' : '🐶');
 }
 function cambiarTabFicha(tab) {
   document.getElementById('fp_tab_resumen').classList.toggle('active', tab === 'resumen');
   document.getElementById('fp_tab_historia').classList.toggle('active', tab === 'historia');
   if (tab === 'resumen') renderFichaResumen(); else renderFichaHistoria();
 }
+
+async function abrirFichaPaciente(id) {
+  await asegurarPacientesCargados();
+  _fpPacienteActivo = _pacientes.find(p => p.id === id);
+  if (!_fpPacienteActivo) return;
+  document.getElementById('fp_nombre').textContent = _fpPacienteActivo.nombre;
+  document.getElementById('fp_sub').textContent = `${_fpPacienteActivo.especie || ''} ${_fpPacienteActivo.raza ? '· ' + _fpPacienteActivo.raza : ''} — Tutor: ${_fpPacienteActivo.cliente_nombre}`;
+  fpPintarAvatar();
+  cambiarTabFicha('resumen');
+  abrirModal('mFichaPaciente');
+}
+function edadPaciente(f) {
+  if (!f) return '—';
+  const n = new Date(f); if (isNaN(n)) return '—';
+  const h = new Date();
+  let meses = (h.getFullYear() - n.getFullYear()) * 12 + h.getMonth() - n.getMonth();
+  if (h.getDate() < n.getDate()) meses--;
+  if (meses < 1) return 'Menos de 1 mes';
+  return meses < 12 ? `${meses} ${meses === 1 ? 'mes' : 'meses'}` : `${Math.floor(meses / 12)} ${Math.floor(meses / 12) === 1 ? 'año' : 'años'}`;
+}
 function renderFichaResumen() {
   const p = _fpPacienteActivo;
+  const it = (l, v) => `<div class="fp-item"><span>${l}</span><strong>${v || '—'}</strong></div>`;
   document.getElementById('fp_contenido').innerHTML = `
-    <div class="ficha-grid">
-      <div class="ficha-item"><span class="ficha-label">Sexo</span><span class="ficha-val">${p.sexo || '—'}</span></div>
-      <div class="ficha-item"><span class="ficha-label">Peso</span><span class="ficha-val">${p.peso ? p.peso + ' kg' : '—'}</span></div>
-      <div class="ficha-item"><span class="ficha-label">Color</span><span class="ficha-val">${p.color || '—'}</span></div>
-      <div class="ficha-item"><span class="ficha-label">Microchip</span><span class="ficha-val">${p.microchip || '—'}</span></div>
+    <div class="fp-grid">
+      ${it('Sexo', p.sexo)}
+      ${it('Peso', p.peso ? p.peso + ' kg' : '')}
+      ${it('Edad', edadPaciente(p.fecha_nacimiento))}
+      ${it('Color', p.color)}
+      ${it('Microchip', p.microchip)}
+      ${it('Tel. tutor', p.cliente_telefono)}
     </div>
     ${p.alergias ? `<div class="ficha-dr-box"><div class="ficha-dr-label">⚠️ Alergias</div><div class="ficha-dr-txt">${p.alergias}</div></div>` : ''}
     ${p.observaciones ? `<div class="ficha-dr-box"><div class="ficha-dr-label">📋 Observaciones</div><div class="ficha-dr-txt">${p.observaciones}</div></div>` : ''}
   `;
+}
+async function fpCambiarFoto(e) {
+  const file = e.target.files[0]; if (!file || !_fpPacienteActivo) return;
+  const fd = new FormData(); fd.append('foto', file);
+  try {
+    const res = await fetch(API + `/api/pacientes/${_fpPacienteActivo.id}/foto`, {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
+    const d = await res.json();
+    if (!d.ok) { toast(d.error || 'Error subiendo foto', 'rojo'); return; }
+    _fpPacienteActivo.foto_url = d.foto_url;
+    fpPintarAvatar();
+    cargarPacientes();
+    toast('Foto actualizada', 'verde');
+  } catch (err) { toast('Error de red subiendo la foto', 'rojo'); }
+  e.target.value = '';
 }
 async function renderFichaHistoria() {
   const box = document.getElementById('fp_contenido');
@@ -610,12 +1312,9 @@ async function renderFichaHistoria() {
       </div>
     </div>`).join('') : '<p style="color:var(--ink-soft);font-size:13px;">Sin consultas registradas.</p>';
 }
-function fpNuevaConsulta() {
+async function fpNuevaConsulta() {
   cerrarModal('mFichaPaciente');
-  ir('historia');
-  document.getElementById('hc_paciente_select').value = _fpPacienteActivo.id;
-  cargarHistoriaPaciente();
-  abrirNuevaConsulta();
+  await irAHistoriaNueva(_fpPacienteActivo.id);
 }
 function fpNuevaVenta() {
   cerrarModal('mFichaPaciente');
@@ -626,6 +1325,58 @@ function fpNuevaVenta() {
       document.getElementById('ve_paciente_id').value = _fpPacienteActivo.id;
     });
   });
+}
+
+function abrirEditarPacienteVet() {
+  const p = _fpPacienteActivo; if (!p) return;
+  document.getElementById('ep_id').value = p.id;
+  document.getElementById('ep_sub').textContent = `Tutor: ${p.cliente_nombre}`;
+  document.getElementById('ep_nombre').value = p.nombre || '';
+  document.getElementById('ep_especie').value = p.especie || '';
+  document.getElementById('ep_raza').value = p.raza || '';
+  document.getElementById('ep_sexo').value = p.sexo || '';
+  document.getElementById('ep_fnac').value = p.fecha_nacimiento ? String(p.fecha_nacimiento).slice(0, 10) : '';
+  document.getElementById('ep_peso').value = p.peso || '';
+  document.getElementById('ep_color').value = p.color || '';
+  document.getElementById('ep_microchip').value = p.microchip || '';
+  document.getElementById('ep_alergias').value = p.alergias || '';
+  document.getElementById('ep_observaciones').value = p.observaciones || '';
+  abrirModal('mEditarPaciente');
+}
+
+let _guardandoEp = false;
+async function guardarEditarPacienteVet() {
+  if (_guardandoEp) return;
+  const v = id => document.getElementById(id).value.trim();
+  const id = v('ep_id');
+  if (!v('ep_nombre')) { toast('El nombre es obligatorio', 'rojo'); return; }
+  const body = {
+    nombre: v('ep_nombre'), especie: v('ep_especie'), raza: v('ep_raza'),
+    sexo: document.getElementById('ep_sexo').value,
+    fecha_nacimiento: v('ep_fnac') || null, peso: v('ep_peso') || null,
+    color: v('ep_color'), microchip: v('ep_microchip'),
+    alergias: v('ep_alergias'), observaciones: v('ep_observaciones'),
+  };
+  _guardandoEp = true;
+  const btn = document.getElementById('ep_btn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    const d = await api(`/api/pacientes/${id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    await cargarPacientes();
+    _fpPacienteActivo = _pacientes.find(p => String(p.id) === String(id));
+    if (_fpPacienteActivo) {
+      document.getElementById('fp_nombre').textContent = _fpPacienteActivo.nombre;
+      document.getElementById('fp_sub').textContent = `${_fpPacienteActivo.especie || ''} ${_fpPacienteActivo.raza ? '· ' + _fpPacienteActivo.raza : ''} — Tutor: ${_fpPacienteActivo.cliente_nombre}`;
+      fpPintarAvatar();
+      cambiarTabFicha('resumen');
+    }
+    cerrarModal('mEditarPaciente');
+    toast('Datos actualizados', 'verde');
+  } finally {
+    _guardandoEp = false;
+    btn.disabled = false; btn.textContent = 'Guardar cambios';
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
