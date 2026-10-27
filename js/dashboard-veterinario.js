@@ -9,7 +9,7 @@ if (user) {
 // ══════════════════════════════════════════════════════════════
 // NAVEGACIÓN
 // ══════════════════════════════════════════════════════════════
-const titles = { inicio: 'Dashboard', atencion: 'Atenciones', pacientes: 'Pacientes', historia: 'Historia clínica', agenda: 'Agenda del día', ventas: 'Ventas / Recetas', inventario: 'Inventario', reportes: 'Reportes' };
+const titles = { inicio: 'Dashboard', atencion: 'Atenciones', pacientes: 'Pacientes', historia: 'Historia clínica', hospitalizacion: 'Hospitalización', agenda: 'Agenda del día', ventas: 'Ventas / Recetas', inventario: 'Inventario', reportes: 'Reportes' };
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => ir(btn.dataset.sec)));
 
 function ir(sec) {
@@ -24,6 +24,7 @@ function ir(sec) {
   if (sec === 'atencion') cargarAtenciones();
   if (sec === 'pacientes') cargarPacientes();
   if (sec === 'historia') cargarSelectPacientesHistoria();
+  if (sec === 'hospitalizacion') cargarHospitalizaciones();
   if (sec === 'agenda') cargarCitas();
   if (sec === 'ventas') cargarVentas();
   if (sec === 'inventario') cargarProductos();
@@ -544,15 +545,7 @@ async function abrirNuevaConsulta(motivo, h) {
           <p class="hx-note">Si pones fecha, la cita se agenda automáticamente al guardar.</p>
         </div>
  
-        <button type="button" class="hx-hosp-btn" id="hx_hosp_btn" onclick="hxToggleHosp()">🏥 Hospitalizar paciente</button>
-        <div class="hx-card" id="hx_hosp_panel" style="display:none;">
-          <h4>Hospitalización</h4>
-          <div class="hx-g2">
-            <div class="hx-f"><label>Ingreso</label><input type="datetime-local" id="hx_h_ingreso" value="${ahoraStr}"></div>
-            ${inp('hx_h_area', 'Jaula / Área')}
-          </div>
-          ${ta('hx_h_motivo', 'Motivo de ingreso')}
-        </div>
+           <button type="button" class="hx-hosp-btn" id="hx_hosp_btn" onclick="abrirHosp()">🏥 Hospitalizar paciente</button>
       </div>
  
       <!-- ═════════ DERECHA ═════════ -->
@@ -1473,6 +1466,597 @@ async function guardarAtencion() {
   toast('Atención registrada', 'verde');
   cerrarModal('mAtencion');
   cargarAtenciones();
+}
+
+async function abrirHosp() {
+  const pid = _pacienteHistoriaActivo;
+  if (!pid) return toast('Selecciona un paciente primero', 'rojo');
+  const p = _pacientes.find(x => String(x.id) === String(pid)) || {};
+  const $ = id => document.getElementById(id);
+
+  $('hospPaciente').textContent = `Paciente: ${p.nombre || ''} · Propietario: ${p.cliente_nombre || ''}`;
+  const f = new Date(); f.setMinutes(f.getMinutes() - f.getTimezoneOffset());
+  $('h_fecha').value = f.toISOString().slice(0, 16);
+  $('h_vet').value = user.nombre || '';
+  $('h_peso').value = hxV('hx_peso') || p.peso || '';
+  $('h_ant').value = hxV('hx_sint');
+  $('h_diag').value = hxV('hx_diag');
+  $('h_plan').value = hxV('hx_trat');
+  $('h_motivo').value = ''; $('h_jaula').value = '';
+  $('h_autor').value = p.cliente_nombre || '';
+  $('h_consent').checked = false;
+
+  const aviso = $('hospAviso'); aviso.style.display = 'none';
+  const btn = $('btnHospGuardar'); btn.disabled = false;
+  const d = await api(`/api/pacientes/${pid}/hospitalizacion-activa`, { headers: authHeaders() });
+  if (d.ok && d.hospitalizacion) {
+    aviso.innerHTML = `⚠️ Este paciente ya tiene una hospitalización activa (<b>${d.hospitalizacion.codigo}</b>).`;
+    aviso.style.display = 'block'; btn.disabled = true;
+  }
+  $('modalHosp').style.display = 'flex';
+}
+
+function cerrarHosp() { document.getElementById('modalHosp').style.display = 'none'; }
+
+async function guardarHosp() {
+  const v = id => document.getElementById(id).value.trim();
+  const btn = document.getElementById('btnHospGuardar');
+  if (!v('h_motivo')) return toast('Falta el motivo de hospitalización', 'rojo');
+  if (!v('h_autor') || !document.getElementById('h_consent').checked) return toast('Falta el consentimiento del propietario', 'rojo');
+  btn.disabled = true;
+  try {
+    const d = await api('/api/hospitalizaciones', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+      paciente_id: _pacienteHistoriaActivo, historia_id: _hxEditId || null,
+      fecha_ingreso: v('h_fecha').replace('T', ' ') + ':00',
+      procedencia: v('h_proc'), veterinario: v('h_vet'), estado_inicial: v('h_estado'),
+      area: v('h_area'), jaula: v('h_jaula'), peso_kg: v('h_peso'),
+      motivo: v('h_motivo'), antecedentes: v('h_ant'), diagnostico: v('h_diag'), plan_inicial: v('h_plan'),
+      consentimiento: true, autorizante: v('h_autor') }) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    toast('Ingreso confirmado: ' + d.codigo, 'verde');
+    cerrarHosp();
+    if (confirm('¿Ver la ficha en el módulo Hospitalización?')) ir('hospitalizacion');
+  } finally { btn.disabled = false; }
+}
+// ══════════════════════════════════════════════════════════════
+// MÓDULO HOSPITALIZACIÓN
+// ══════════════════════════════════════════════════════════════
+let _hosps = [], _hospFiltro = 'activa', _hospDet = null, _hospTabActual = 'resumen';
+const hE = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const hD = s => s ? new Date(String(s).replace(' ', 'T')) : null;
+const hF = s => { const d = hD(s); return d && !isNaN(d) ? d.toLocaleString('es-EC', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; };
+const hNow = () => { const f = new Date(); f.setMinutes(f.getMinutes() - f.getTimezoneOffset()); return f.toISOString().slice(0, 16); };
+const hClase = e => e === 'Crítico' ? 'crit' : e === 'Requiere vigilancia' ? 'warn' : 'ok';
+function hDur(ini, fin) {
+  const a = hD(ini), b = fin ? hD(fin) : new Date(); if (!a || isNaN(a)) return '—';
+  const h = Math.max(0, Math.floor((b - a) / 36e5)), d = Math.floor(h / 24);
+  return d ? `${d} d ${h % 24} h` : `${h} h`;
+}
+const hOpts = (arr, sel) => arr.map(o => `<option ${o === sel ? 'selected' : ''}>${o}</option>`).join('');
+
+async function cargarHospitalizaciones() {
+  await asegurarPacientesCargados();
+  const d = await api('/api/hospitalizaciones?estado=todas', { headers: authHeaders() });
+  _hosps = d.ok ? d.hospitalizaciones : [];
+  const act = _hosps.filter(h => h.estado === 'activa');
+  document.getElementById('hp-st-activas').textContent = act.length;
+  document.getElementById('hp-st-vigilancia').textContent = act.filter(h => h.estado_inicial !== 'Estable').length;
+  document.getElementById('hp-st-altas').textContent = _hosps.length - act.length;
+  hospRender();
+}
+function hospFiltro(f) {
+  _hospFiltro = f;
+  ['activa', 'alta', 'todas'].forEach(x => document.getElementById('hp_f_' + x).classList.toggle('active', x === f));
+  hospRender();
+}
+function hospRender() {
+  const q = _norm(document.getElementById('hosp_buscar').value);
+  const lista = _hosps.filter(h =>
+    (_hospFiltro === 'todas' || h.estado === _hospFiltro) &&
+    (!q || _norm([h.paciente_nombre, h.cliente_nombre, h.codigo].join(' ')).includes(q)));
+  document.getElementById('hospGrid').innerHTML = lista.length ? lista.map(h => {
+    const act = h.estado === 'activa';
+    return `<div class="hp-card ${act ? hClase(h.estado_inicial) : 'done'}" onclick="abrirHospDetalle(${h.id})">
+      <div class="hp-card-top">
+        <div class="hp-av">${h.foto_url ? `<img src="${h.foto_url}" alt="">` : (String(h.especie || '').toLowerCase().includes('gat') ? '🐱' : '🐶')}</div>
+        <div class="hp-card-id">
+          <b>${hE(h.paciente_nombre)}</b>
+          <span>${hE(h.especie || '')}${h.raza ? ' · ' + hE(h.raza) : ''}</span>
+          <span>Tutor: ${hE(h.cliente_nombre)}</span>
+        </div>
+        <span class="hp-cod">${hE(h.codigo || '')}</span>
+      </div>
+      <div class="hp-chips">
+        ${act ? `<span class="hp-chip ${hClase(h.estado_inicial)}">${hE(h.estado_inicial)}</span>` : `<span class="hp-chip done">Alta · ${hE(h.condicion_alta || '')}</span>`}
+        <span class="hp-chip neutro">📍 ${hE(h.jaula ? h.jaula + ' · ' : '')}${hE(h.area || 'Sin área')}</span>
+      </div>
+      <p class="hp-motivo">${hE(h.motivo)}</p>
+      <div class="hp-card-foot">
+        <span>Ingreso ${hF(h.ingreso_txt)}</span>
+        <span><b>${hDur(h.ingreso_txt, act ? null : h.alta_txt)}</b> ${act ? 'hospitalizado' : 'de estancia'}</span>
+      </div>
+    </div>`;
+  }).join('') : `<p class="hp-vacio">${_hospFiltro === 'activa' ? 'No hay pacientes hospitalizados en este momento.' : 'Sin resultados.'}</p>`;
+}
+
+let _hospMeds = [];
+async function hospCargarMeds() {
+  const d = await api('/api/hosp-medicamentos', { headers: authHeaders() });
+  _hospMeds = d.ok ? d.medicamentos : [];
+}
+async function abrirHospDetalle(id, tab) {
+  const [d] = await Promise.all([api(`/api/hospitalizaciones/${id}`, { headers: authHeaders() }), hospCargarMeds()]);
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  _hospDet = d;
+  hospTab(tab || _hospTabActual || 'resumen');
+  abrirModal('mHospDetalle');
+}
+
+// Al elegir un medicamento ya usado, rellena lo que esté vacío
+function hdAutoMed(nombre) {
+  const m = _hospMeds.find(x => _norm(x.producto) === _norm(nombre)); if (!m) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val && !el.value.trim()) el.value = val; };
+  set('ht_dosis', m.dosis); set('ht_instr', m.instrucciones);
+  const via = document.getElementById('ht_via');
+  if (m.via && [...via.options].some(o => o.value === m.via)) via.value = m.via;
+  toast('Datos de la última vez cargados', 'verde');
+}
+
+
+async function hospRefrescar(tab) {
+  await abrirHospDetalle(_hospDet.hospitalizacion.id, tab);
+  cargarHospitalizaciones();
+}
+
+function hospTab(t) {
+  _hospTabActual = t;
+  ['resumen', 'monitoreo', 'tratamientos', 'evolucion', 'alta'].forEach(x => document.getElementById('hd_tab_' + x).classList.toggle('active', x === t));
+  const h = _hospDet.hospitalizacion, act = h.estado === 'activa';
+  document.getElementById('hd_head').innerHTML = `
+    <div class="hp-dh">
+      <div class="hp-av lg">${h.foto_url ? `<img src="${h.foto_url}" alt="">` : (String(h.especie || '').toLowerCase().includes('gat') ? '🐱' : '🐶')}</div>
+      <div style="flex:1;min-width:0;">
+        <h2 style="margin:0;">${hE(h.paciente_nombre)} <span class="hp-cod">${hE(h.codigo || '')}</span></h2>
+        <p class="modal-sub" style="margin:2px 0 8px;">${hE(h.especie || '')}${h.raza ? ' · ' + hE(h.raza) : ''} — Tutor: ${hE(h.cliente_nombre)}</p>
+        <div class="hp-chips">
+          ${act ? `<span class="hp-chip ${hClase(h.estado_inicial)}">${hE(h.estado_inicial)}</span>` : `<span class="hp-chip done">Alta · ${hE(h.condicion_alta || '')}</span>`}
+          <span class="hp-chip neutro">📍 ${hE(h.jaula ? h.jaula + ' · ' : '')}${hE(h.area || '—')}</span>
+          <span class="hp-chip neutro">⏱ ${hDur(h.ingreso_txt, act ? null : h.alta_txt)}</span>
+        </div>
+      </div>
+    </div>`;
+  const body = document.getElementById('hd_body');
+ body.innerHTML = t === 'resumen' ? hdResumen() : t === 'monitoreo' ? hdMonitoreo() : t === 'tratamientos' ? hdTratamientos() : t === 'evolucion' ? hdEvolucion() : hdAlta();
+}
+
+function hdResumen() {
+  const h = _hospDet.hospitalizacion;
+  const pend = (_hospDet.tratamientos || []).filter(x => x.estado === 'programado').slice(0, 3);
+  const it = (l, v) => `<div class="fp-item"><span>${l}</span><strong>${hE(v) || '—'}</strong></div>`;
+  const bl = (l, v) => v ? `<div class="hp-bloque"><div class="hp-bl-t">${l}</div><div class="hp-bl-x">${hE(v)}</div></div>` : '';
+  return `
+    <div class="fp-grid">
+      ${it('Ingreso', hF(h.ingreso_txt))}${it('Procedencia', h.procedencia)}${it('Veterinario', h.veterinario)}
+      ${it('Peso', h.peso_kg ? h.peso_kg + ' kg' : '')}${it('Jaula', h.jaula)}${it('Tel. tutor', h.cliente_telefono)}
+    </div>
+    ${pend.length ? `<div class="hp-bloque"><div class="hp-bl-t">⏰ Próximos cuidados</div>${pend.map(x => `<div class="hp-bl-x">${hF(x.prog_txt)} — <b>${hE(x.producto)}</b> ${hE(x.dosis)} ${hE(x.via)}</div>`).join('')}</div>` : ''}
+    ${bl('Motivo de hospitalización', h.motivo)}${bl('Antecedentes y resumen de consulta', h.antecedentes)}
+    ${bl('Diagnóstico', h.diagnostico)}${bl('Plan inicial', h.plan_inicial)}
+    <div class="hp-bloque ok"><div class="hp-bl-t">✔ Consentimiento</div>
+      <div class="hp-bl-x">Autorizado por <b>${hE(h.autorizante || '—')}</b> · registrado por ${hE(h.creado_por || '—')}</div></div>`;
+}
+
+function hdMonitoreo() {
+  const h = _hospDet.hospitalizacion, act = h.estado === 'activa', m = _hospDet.monitoreo;
+  const sel = (id, arr) => `<select id="${id}"><option value="">—</option>${hOpts(arr)}</select>`;
+  const form = act ? `
+    <div class="hp-form">
+      <div class="hp-form-t">Registrar medición</div>
+      <div class="form-row">
+        <div class="field"><label>Fecha y hora</label><input type="datetime-local" id="hm_fecha" value="${hNow()}"></div>
+        <div class="field"><label>Temperatura (°C)</label><input type="number" step="0.1" id="hm_temp"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Frecuencia cardíaca (lpm)</label><input type="text" id="hm_fc"></div>
+        <div class="field"><label>Frecuencia respiratoria (rpm)</label><input type="text" id="hm_fr"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Mucosas</label><input type="text" id="hm_muc" placeholder="Rosadas, pálidas..."></div>
+        <div class="field"><label>TLLC (seg)</label><input type="text" id="hm_tllc" placeholder="Ej. 2"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>% de hidratación</label><input type="number" min="0" max="100" step="1" id="hm_hidpct" placeholder="Ej. 5"></div>
+        <div class="field"><label>Dolor</label>${sel('hm_dolor', ['Sin dolor', 'Leve', 'Moderado', 'Severo'])}</div>
+      </div>
+
+      <div class="hp-form-t" style="margin-top:6px;">Informar si…</div>
+      <div class="form-row">
+        <div class="field"><label>Consumo de agua</label>${sel('hm_agua', ['Normal', 'Aumentado', 'Disminuido', 'No bebe'])}</div>
+        <div class="field"><label>Consumo de alimento</label>${sel('hm_ali', ['Normal', 'Disminuido', 'No come'])}</div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Orina</label>${sel('hm_orina', ['Sí', 'No', 'Disminuida', 'Aumentada'])}</div>
+        <div class="field"><label>Heces</label>${sel('hm_heces', ['Normales', 'Diarrea', 'Blandas', 'Con sangre', 'No hubo'])}</div>
+      </div>
+
+      <div class="form-row">
+        <div class="field"><label>Vómito</label>${sel('hm_vomito', ['No', 'Sí (1 vez)', 'Sí (2-3 veces)', 'Sí (más de 3)'])}</div>
+        <div class="field"><label>Observaciones</label><input type="text" id="hm_obs"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="hm_btn" onclick="hdGuardarMonitoreo()">+ Guardar medición</button>
+    </div>` : '';
+
+  return form + (m.length ? `<div class="table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Temp</th><th>FC</th><th>FR</th><th>Mucosas</th><th>TLLC</th><th>% Hidr.</th>
+      <th>Agua</th><th>Alimento</th><th>Orina</th><th>Heces</th><th>Vómito</th><th>Dolor</th><th>Obs.</th><th>Por</th></tr></thead>
+    <tbody>${m.map(r => `<tr>
+      <td>${hF(r.fecha_txt)}</td><td>${r.temperatura ?? '—'}</td><td>${hE(r.fc) || '—'}</td><td>${hE(r.fr) || '—'}</td>
+      <td>${hE(r.mucosas) || '—'}</td><td>${hE(r.tllc) || '—'}</td>
+      <td>${r.hidratacion_pct ? hE(r.hidratacion_pct) + '%' : (hE(r.hidratacion) || '—')}</td>
+      <td>${hE(r.consumo_agua) || '—'}</td><td>${hE(r.consumo_alimento) || '—'}</td><td>${hE(r.orina) || '—'}</td>
+      <td>${hE(r.heces) || '—'}</td><td>${hE(r.vomito) || '—'}</td><td>${hE(r.dolor) || '—'}</td>
+      <td>${hE(r.observaciones) || '—'}</td><td>${hE(r.usuario)}</td></tr>`).join('')}</tbody>
+    </table></div>` : '<p class="hp-vacio">Aún no hay mediciones registradas.</p>');
+}
+
+async function hdGuardarMonitoreo() {
+  const v = id => document.getElementById(id).value.trim(), btn = document.getElementById('hm_btn');
+  btn.disabled = true;
+  try {
+    const d = await api(`/api/hospitalizaciones/${_hospDet.hospitalizacion.id}/monitoreo`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+      fecha: v('hm_fecha').replace('T', ' ') + ':00', temperatura: v('hm_temp'), fc: v('hm_fc'), fr: v('hm_fr'),
+      mucosas: v('hm_muc'), tllc: v('hm_tllc'), hidratacion_pct: v('hm_hidpct'), dolor: v('hm_dolor'),
+      consumo_agua: v('hm_agua'), consumo_alimento: v('hm_ali'), orina: v('hm_orina'),
+      heces: v('hm_heces'), vomito: v('hm_vomito'), observaciones: v('hm_obs') }) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    toast('Medición guardada', 'verde');
+    await hospRefrescar('monitoreo');
+
+  } finally { btn.disabled = false; }
+}
+
+const HP_TIPO = { evolucion: 'Evolución', incidencia: 'Incidencia', relevo: 'Relevo de turno' };
+function hdEvolucion() {
+  const h = _hospDet.hospitalizacion, act = h.estado === 'activa', n = _hospDet.notas;
+  const form = act ? `
+    <div class="hp-form">
+      <div class="hp-form-t">Nueva nota</div>
+      <div class="form-row">
+        <div class="field"><label>Fecha y hora</label><input type="datetime-local" id="hn_fecha" value="${hNow()}"></div>
+        <div class="field"><label>Tipo</label><select id="hn_tipo">${Object.entries(HP_TIPO).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>Nota</label><textarea id="hn_nota" rows="3" placeholder="Respuesta al tratamiento, incidencias, plan siguiente..."></textarea></div>
+      <button class="btn btn-primary btn-sm" id="hn_btn" onclick="hdGuardarNota()">+ Agregar nota</button>
+    </div>` : '';
+  return form + (n.length ? `<div class="hp-timeline">${n.map(x => `
+    <div class="hp-tl-item ${x.tipo}">
+      <div class="hp-tl-top"><span class="hp-chip neutro">${HP_TIPO[x.tipo] || x.tipo}</span><small>${hF(x.fecha_txt)} · ${hE(x.usuario)}</small></div>
+      <div class="hp-tl-txt">${hE(x.nota)}</div>
+    </div>`).join('')}</div>` : '<p class="hp-vacio">Sin notas de evolución todavía.</p>');
+}
+async function hdGuardarNota() {
+  const v = id => document.getElementById(id).value.trim(), btn = document.getElementById('hn_btn');
+  if (!v('hn_nota')) { toast('Escribe la nota', 'rojo'); return; }
+  btn.disabled = true;
+  try {
+    const d = await api(`/api/hospitalizaciones/${_hospDet.hospitalizacion.id}/notas`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+      fecha: v('hn_fecha').replace('T', ' ') + ':00', tipo: v('hn_tipo'), nota: v('hn_nota') }) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    toast('Nota agregada', 'verde');
+    await hospRefrescar('evolucion');
+  } finally { btn.disabled = false; }
+}
+
+function hdAlta() {
+  const h = _hospDet.hospitalizacion;
+  if (h.estado !== 'activa') {
+    const bl = (l, v) => v ? `<div class="hp-bloque"><div class="hp-bl-t">${l}</div><div class="hp-bl-x">${hE(v)}</div></div>` : '';
+    return `<div class="hp-informe">
+      <div><b>📄 Informe de hospitalización</b><small>Monitoreo, tratamientos y evolución en un solo PDF</small></div>
+      <button class="btn btn-primary" onclick="hospInforme()">⬇ Descargar informe PDF</button>
+    </div>
+    <div class="hp-bloque ok"><div class="hp-bl-t">✔ Alta registrada</div>
+      <div class="hp-bl-x">${hF(h.alta_txt)} · Condición: <b>${hE(h.condicion_alta)}</b> · Autorizó: ${hE(h.alta_por || '—')} · Estancia: ${hDur(h.ingreso_txt, h.alta_txt)}</div></div>
+      ${bl('Resumen de la estancia', h.resumen_alta)}${bl('Indicaciones al propietario', h.indicaciones_alta)}
+      ${h.control_txt ? bl('Próximo control', fmtFecha(h.control_txt)) : ''}`;
+  }
+  return `<div class="hp-form">
+    <div class="hp-form-t">Preparar alta hospitalaria</div>
+    <div class="form-row">
+      <div class="field"><label>Fecha y hora de alta *</label><input type="datetime-local" id="ha_fecha" value="${hNow()}"></div>
+      <div class="field"><label>Condición al egreso *</label><select id="ha_cond">${hOpts(['Recuperado', 'Mejorado', 'Estable', 'Transferido', 'Alta voluntaria', 'Fallecido'], 'Mejorado')}</select></div>
+    </div>
+    <div class="field"><label>Resumen de la estancia *</label><textarea id="ha_res" rows="3"></textarea></div>
+    <div class="field"><label>Indicaciones para el propietario (tratamiento en casa, signos de alarma)</label><textarea id="ha_ind" rows="3"></textarea></div>
+    <div class="field"><label>Próximo control (agenda una cita automáticamente)</label><input type="date" id="ha_ctrl"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="ha_btn" onclick="hdConfirmarAlta()">✓ Confirmar alta</button>
+      <button class="btn btn-ghost" type="button" onclick="hospInforme()">📄 Ver informe actual</button>
+    </div>
+  </div>`;
+}
+async function hdConfirmarAlta() {
+  const v = id => document.getElementById(id).value.trim(), h = _hospDet.hospitalizacion;
+  if (!v('ha_res')) { toast('Falta el resumen de la estancia', 'rojo'); return; }
+  if (!confirm(`¿Confirmar el alta de ${h.paciente_nombre}? La estancia se cerrará.`)) return;
+  const btn = document.getElementById('ha_btn'); btn.disabled = true;
+  try {
+    const d = await api(`/api/hospitalizaciones/${h.id}/alta`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({
+      fecha_alta: v('ha_fecha').replace('T', ' ') + ':00', condicion_alta: v('ha_cond'),
+      resumen_alta: v('ha_res'), indicaciones_alta: v('ha_ind'), proximo_control: v('ha_ctrl') || null }) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    if (v('ha_ctrl')) {
+      const p = _pacientes.find(x => String(x.id) === String(h.paciente_id));
+      await api('/api/citas', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+        cliente_id: p?.cliente_id || null, paciente_id: h.paciente_id, fecha: v('ha_ctrl'), hora: '09:00',
+        motivo: 'Control post-hospitalización', notas: h.codigo || '' }) });
+    }
+    toast('Alta registrada', 'verde');
+    await hospRefrescar('alta');
+  } finally { btn.disabled = false; }
+}
+
+const HP_EST = { realizado: 'Administrado', no_administrado: 'No administrado', omitido: 'Omitido', cancelado: 'Cancelado' };
+function hdTratamientos() {
+  const h = _hospDet.hospitalizacion, act = h.estado === 'activa', t = _hospDet.tratamientos || [];
+  const pend = t.filter(x => x.estado === 'programado');
+  const hist = t.filter(x => x.estado !== 'programado').sort((a, b) => String(b.prog_txt).localeCompare(String(a.prog_txt)));
+  const ahora = new Date();
+const nombres = [...new Set([
+  ..._hospMeds.map(m => m.producto),
+  ...(typeof _productos !== 'undefined' ? _productos : []).map(p => p.nombre)
+])];
+const sug = nombres.map(n => `<option value="${hE(n)}">`).join('');
+const form = act ? `
+    <div class="hp-form">
+      <div class="hp-form-t">Programar tratamiento</div>
+      <div class="form-row">
+        <div class="field"><label>Medicamento / procedimiento *</label><input type="text" id="ht_prod" list="ht_dl" autocomplete="off" onchange="hdAutoMed(this.value)"><datalist id="ht_dl">${sug}</datalist></div>
+        <div class="field"><label>Dosis</label>
+  <div style="display:flex;gap:6px;">
+    <input type="text" id="ht_dosis" placeholder="Ej. 5 mg/kg · 2 ml" style="flex:1;min-width:0;">
+    <button type="button" class="btn btn-ghost btn-sm" title="Calcular dosis" onclick="dcAbrir()">🧮</button>
+  </div>
+</div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Vía</label><select id="ht_via">${hOpts(['Oral', 'IV', 'IM', 'SC', 'Tópica', 'Otra'])}</select></div>
+        <div class="field"><label>Primera dosis *</label><input type="datetime-local" id="ht_primera" value="${hNow()}"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Repetir cada (horas)</label><input type="number" min="1" step="0.5" id="ht_horas" placeholder="Ej. 8"></div>
+        <div class="field"><label>Número de dosis</label><input type="number" min="1" max="60" id="ht_n" value="1"></div>
+      </div>
+      <div class="field"><label>Instrucciones</label><input type="text" id="ht_instr" placeholder="Con alimento, diluir, etc."></div>
+      <button class="btn btn-primary btn-sm" id="ht_btn" onclick="hdGuardarTratamiento()">+ Programar</button>
+    </div>` : '';
+  const pendHtml = pend.length ? pend.map(x => {
+    const atras = hD(x.prog_txt) < ahora;
+    return `<div class="hp-tr ${atras ? 'late' : ''}">
+      <div class="hp-tr-i">
+        <b>${hE(x.producto)}</b> <span>${hE(x.dosis)} ${x.via ? '· ' + hE(x.via) : ''}</span>
+        <small>${hF(x.prog_txt)}${atras ? ' · <b class="hp-late">ATRASADO</b>' : ''}${x.instrucciones ? ' · ' + hE(x.instrucciones) : ''}</small>
+      </div>
+      ${act ? `<div class="hp-tr-b">
+        <button class="btn btn-primary btn-sm" onclick="hdTrEstado(${x.id},'realizado')">✓ Administrado</button>
+        <button class="btn btn-ghost btn-sm" onclick="hdTrEstado(${x.id},'no_administrado')">No administrado</button>
+        <button class="btn btn-ghost btn-sm" onclick="hdTrEstado(${x.id},'cancelado')">✕</button>
+      </div>` : ''}
+    </div>`;
+  }).join('') : '<p class="hp-vacio">No hay tratamientos pendientes.</p>';
+  const histHtml = hist.length ? `<div class="hp-form-t" style="margin-top:18px;">Historial de administración</div>
+    <div class="table-wrap"><table><thead><tr><th>Programado</th><th>Tratamiento</th><th>Estado</th><th>Real</th><th>Cantidad</th><th>Observaciones</th><th>Por</th></tr></thead>
+    <tbody>${hist.map(x => `<tr><td>${hF(x.prog_txt)}</td><td>${hE(x.producto)} ${hE(x.dosis)}</td>
+      <td><span class="hp-chip ${x.estado === 'realizado' ? 'ok' : x.estado === 'cancelado' ? 'done' : 'warn'}">${HP_EST[x.estado]}</span></td>
+      <td>${x.real_txt ? hF(x.real_txt) : '—'}</td><td>${hE(x.cantidad_real) || '—'}</td><td>${hE(x.observaciones) || '—'}</td><td>${hE(x.confirmado_por)}</td></tr>`).join('')}</tbody></table></div>` : '';
+  return form + `<div class="hp-form-t">Pendientes (${pend.length})</div>` + pendHtml + histHtml;
+}
+
+async function hdGuardarTratamiento() {
+  const v = id => document.getElementById(id).value.trim(), btn = document.getElementById('ht_btn');
+  if (!v('ht_prod')) { toast('Indica el medicamento o procedimiento', 'rojo'); return; }
+  btn.disabled = true;
+  try {
+    const d = await api(`/api/hospitalizaciones/${_hospDet.hospitalizacion.id}/tratamientos`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+      producto: v('ht_prod'), dosis: v('ht_dosis'), via: v('ht_via'), primera: v('ht_primera').replace('T', ' ') + ':00',
+      cada_horas: v('ht_horas'), num_dosis: v('ht_n'), instrucciones: v('ht_instr') }) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    toast(`${d.dosis} dosis programada(s)`, 'verde');
+    await hospRefrescar('tratamientos');
+  } finally { btn.disabled = false; }
+}
+
+// ── Calculadora de dosis ─────────────────────────────────────
+let _dcRes = null;
+const dcN = id => parseFloat(String(document.getElementById(id).value).replace(',', '.'));
+const dcFmt = n => String(Number(n.toFixed(n < 1 ? 3 : 2)));
+
+function dcAbrir() {
+  const h = _hospDet && _hospDet.hospitalizacion;
+  document.getElementById('dc_peso').value = (h && h.peso_kg) || '';
+  document.getElementById('dc_dosis').value = '';
+  document.getElementById('dc_conc').value = '';
+  dcCalc();
+  abrirModal('mCalcDosis');
+}
+
+function dcCalc() {
+  const peso = dcN('dc_peso'), dosis = dcN('dc_dosis'), conc = dcN('dc_conc');
+  const u = document.getElementById('dc_dosis_u').value, esVol = u === 'vol';
+  const fc = parseFloat(document.getElementById('dc_conc_u').value);
+  const box = document.getElementById('dc_res'), btn = document.getElementById('dc_usar');
+  document.getElementById('dc_conc_lbl').textContent = esVol ? 'Concentración del fármaco (opcional)' : 'Concentración del fármaco';
+
+  if (!(peso > 0 && dosis > 0 && (esVol || conc > 0))) {
+    _dcRes = null; btn.disabled = true;
+    box.innerHTML = esVol
+      ? 'Introduce el peso y la dosis para calcular el resultado.'
+      : 'Introduce el peso, la dosis y la concentración para calcular el resultado.';
+    return;
+  }
+
+  let vol, totalMg = null;
+  if (esVol) {                                   // dosis en ml/kg: el volumen sale directo
+    vol = dosis * peso;
+    if (conc > 0) totalMg = vol * conc * fc;
+  } else {
+    totalMg = dosis * parseFloat(u) * peso;      // cantidad total en mg
+    vol = totalMg / (conc * fc);                 // volumen en mL
+  }
+
+  const fmtTotal = mg => mg >= 1000 ? dcFmt(mg / 1000) + ' g' : mg < 1 ? dcFmt(mg * 1000) + ' µg' : dcFmt(mg) + ' mg';
+  const uDosis = document.getElementById('dc_dosis_u').selectedOptions[0].text;
+  const totalTxt = totalMg != null ? fmtTotal(totalMg) : '';
+
+  _dcRes = { texto: `${dcFmt(dosis)} ${uDosis} · ${dcFmt(vol)} ml${totalTxt ? ' (' + totalTxt + ')' : ''}` };
+  btn.disabled = false;
+  box.innerHTML =
+    (totalTxt ? `Cantidad total de fármaco: <b>${totalTxt}</b><br>` : '') +
+
+    `Volumen a administrar: <b>${dcFmt(vol)} mL</b>`;
+}
+
+function dcUsar() {
+  if (!_dcRes) return;
+  document.getElementById('ht_dosis').value = _dcRes.texto;
+  cerrarModal('mCalcDosis');
+}
+
+
+// ── Informe PDF de la hospitalización ────────────────────────
+function hospInforme() {
+  const d = _hospDet; if (!d) return;
+  const w = window.open('', '_blank');
+  if (!w) { toast('Permite las ventanas emergentes para descargar el informe', 'rojo'); return; }
+
+  const h = d.hospitalizacion, act = h.estado === 'activa';
+  const clinica = hE(RX_CLINICA.nombre || user.nombre_clinica || 'Clínica veterinaria');
+  const x = v => hE(v) || '—';
+  const mon = [...d.monitoreo].reverse(), notas = [...d.notas].reverse(), trat = d.tratamientos || [];
+  const hechas = trat.filter(t => t.estado === 'realizado').length;
+  const vacio = '<p class="vacio">Sin registros.</p>';
+  const bloque = (t, v) => v ? `<div class="txt"><b>${t}</b><p>${hE(v)}</p></div>` : '';
+  const dato = (l, v) => `<div class="dato"><span>${l}</span><b>${x(v)}</b></div>`;
+  const EST = { programado: 'Pendiente', realizado: 'Administrado', no_administrado: 'No administrado', omitido: 'Omitido', cancelado: 'Cancelado' };
+  const CLS = { programado: 'gris', realizado: 'ok', no_administrado: 'warn', omitido: 'warn', cancelado: 'gris' };
+
+  const tMon = mon.length ? `<table class="chico"><thead><tr>
+      <th>Fecha</th><th>T°</th><th>FC</th><th>FR</th><th>Mucosas</th><th>TLLC</th><th>Hidr.</th><th>Agua</th><th>Alim.</th>
+      <th>Orina</th><th>Heces</th><th>Vómito</th><th>Dolor</th><th>Obs.</th></tr></thead><tbody>
+      ${mon.map(r => `<tr><td>${hF(r.fecha_txt)}</td><td>${r.temperatura ?? '—'}</td><td>${x(r.fc)}</td><td>${x(r.fr)}</td>
+        <td>${x(r.mucosas)}</td><td>${x(r.tllc)}</td><td>${r.hidratacion_pct ? hE(r.hidratacion_pct) + '%' : x(r.hidratacion)}</td>
+        <td>${x(r.consumo_agua)}</td><td>${x(r.consumo_alimento)}</td><td>${x(r.orina)}</td><td>${x(r.heces)}</td>
+        <td>${x(r.vomito)}</td><td>${x(r.dolor)}</td><td>${x(r.observaciones)}</td></tr>`).join('')}
+      </tbody></table>` : vacio;
+
+  const tTrat = trat.length ? `<table><thead><tr><th>Programado</th><th>Medicamento</th><th>Dosis · Vía</th><th>Estado</th>
+      <th>Realizado</th><th>Cantidad</th><th>Observaciones</th><th>Por</th></tr></thead><tbody>
+      ${trat.map(t => `<tr><td>${hF(t.prog_txt)}</td><td><b>${x(t.producto)}</b></td>
+        <td>${x([t.dosis, t.via].filter(Boolean).join(' · '))}</td>
+        <td><span class="chip ${CLS[t.estado] || 'gris'}">${EST[t.estado] || hE(t.estado)}</span></td>
+        <td>${t.real_txt ? hF(t.real_txt) : '—'}</td><td>${x(t.cantidad_real)}</td><td>${x(t.observaciones)}</td><td>${x(t.confirmado_por)}</td></tr>`).join('')}
+
+      </tbody></table>` : vacio;
+
+  const tEvo = notas.length ? notas.map(n => `<div class="nota ${hE(n.tipo)}">
+      <div class="nota-t"><span class="chip gris">${HP_TIPO[n.tipo] || hE(n.tipo)}</span><small>${hF(n.fecha_txt)} · ${x(n.usuario)}</small></div>
+      <p>${hE(n.nota)}</p></div>`).join('') : vacio;
+
+  const alta = !act ? `<section><h2>Alta hospitalaria</h2>
+      <div class="datos">${dato('Fecha de alta', hF(h.alta_txt))}${dato('Condición', h.condicion_alta)}${dato('Autorizó', h.alta_por)}</div>
+      ${bloque('Resumen de la estancia', h.resumen_alta)}${bloque('Indicaciones al propietario', h.indicaciones_alta)}
+      ${h.control_txt ? bloque('Próximo control', fmtFecha(h.control_txt)) : ''}</section>` : '';
+
+  const titulo = `Informe ${h.codigo || ''} - ${h.paciente_nombre}`;
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${hE(titulo)}</title><style>
+    @page{size:A4;margin:12mm}
+    *{box-sizing:border-box}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#1c2733;font-size:11px;line-height:1.45;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .hd{background:#0f6b4f;color:#fff;border-radius:12px;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+    .hd h1{margin:0;font-size:20px}.hd small{opacity:.85;font-size:11px}
+    .cod{background:rgba(255,255,255,.18);border-radius:20px;padding:5px 14px;font-weight:700;font-size:12px;white-space:nowrap}
+    .pac{display:flex;gap:14px;align-items:center;border:1px solid #dbe5ee;background:#f6f9fd;border-radius:12px;padding:12px 16px;margin:14px 0}
+    .pac .av{width:46px;height:46px;border-radius:50%;background:#e1f1ea;display:grid;place-items:center;font-size:24px;flex:none}
+    .pac h3{margin:0;font-size:15px}.pac span{color:#5b6b7b}
+    .kpis{display:flex;gap:10px;margin-bottom:6px}
+    .kpi{flex:1;border:1px solid #dbe5ee;border-radius:10px;padding:8px 12px;text-align:center}
+    .kpi b{display:block;font-size:17px;color:#0f6b4f}.kpi span{font-size:10px;color:#5b6b7b;text-transform:uppercase;letter-spacing:.04em}
+    section{margin-top:16px}
+    h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.07em;color:#0f6b4f;margin:0 0 8px;padding-left:9px;border-left:4px solid #0f6b4f}
+    .datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+    .dato{border:1px solid #e3eaf1;border-radius:8px;padding:6px 10px}
+    .dato span{display:block;font-size:9.5px;color:#5b6b7b;text-transform:uppercase;letter-spacing:.04em}
+    .txt{background:#f6f9fd;border-radius:8px;padding:8px 12px;margin-bottom:6px;page-break-inside:avoid}
+    .txt b{font-size:10px;text-transform:uppercase;color:#5b6b7b;letter-spacing:.04em}.txt p{margin:3px 0 0;white-space:pre-line}
+
+    table{width:100%;border-collapse:collapse}
+    th{background:#0f6b4f;color:#fff;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;padding:6px 7px}
+    td{padding:5px 7px;border-bottom:1px solid #e3eaf1;vertical-align:top}
+    tbody tr:nth-child(even) td{background:#f8fbfd}
+    thead{display:table-header-group}tr{page-break-inside:avoid}
+    table.chico{font-size:8.5px}table.chico th{font-size:8px;padding:5px 4px}table.chico td{padding:4px}
+    .chip{display:inline-block;border-radius:20px;padding:2px 9px;font-size:9.5px;font-weight:700;white-space:nowrap}
+    .chip.ok{background:#dff3e8;color:#0b6b3f}.chip.warn{background:#fff1d6;color:#8a5a00}.chip.gris{background:#e8eef4;color:#4a5b6b}
+    .nota{border-left:3px solid #9fb3c8;background:#f8fbfd;border-radius:0 8px 8px 0;padding:7px 12px;margin-bottom:6px;page-break-inside:avoid}
+    .nota.incidencia{border-color:#d9534f}.nota.relevo{border-color:#e0a100}.nota.evolucion{border-color:#0f6b4f}
+    .nota-t{display:flex;justify-content:space-between;align-items:center;gap:8px}.nota-t small{color:#5b6b7b}
+    .nota p{margin:4px 0 0;white-space:pre-line}
+    .vacio{color:#7a8794;font-style:italic;margin:4px 0}
+    .firma{margin-top:48px;display:flex;justify-content:flex-end}
+    .firma div{width:230px;border-top:1.5px dashed #555;text-align:center;padding-top:5px;color:#444}
+    .pie{margin-top:22px;border-top:1px solid #dbe5ee;padding-top:8px;color:#7a8794;font-size:9.5px;display:flex;justify-content:space-between}
+  </style></head><body>
+    <div class="hd">
+      <div><h1>Informe de hospitalización</h1><small>${clinica}</small></div>
+      <span class="cod">${x(h.codigo)}</span>
+    </div>
+    <div class="pac">
+      <div class="av">${String(h.especie || '').toLowerCase().includes('gat') ? '🐱' : '🐶'}</div>
+      <div><h3>${x(h.paciente_nombre)}</h3><span>${x(h.especie)}${h.raza ? ' · ' + hE(h.raza) : ''} — Tutor: ${x(h.cliente_nombre)} · Tel. ${x(h.cliente_telefono)}</span></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><b>${hDur(h.ingreso_txt, act ? null : h.alta_txt)}</b><span>Estancia</span></div>
+      <div class="kpi"><b>${mon.length}</b><span>Mediciones</span></div>
+      <div class="kpi"><b>${hechas}/${trat.length}</b><span>Tratamientos administrados</span></div>
+      <div class="kpi"><b>${notas.length}</b><span>Notas de evolución</span></div>
+    </div>
+
+
+    <section><h2>Datos del ingreso</h2>
+      <div class="datos">${dato('Ingreso', hF(h.ingreso_txt))}${dato('Procedencia', h.procedencia)}${dato('Veterinario', h.veterinario)}
+        ${dato('Estado inicial', h.estado_inicial)}${dato('Área / jaula', [h.area, h.jaula].filter(Boolean).join(' · '))}${dato('Peso', h.peso_kg ? h.peso_kg + ' kg' : '')}</div>
+      ${bloque('Motivo de hospitalización', h.motivo)}${bloque('Antecedentes', h.antecedentes)}
+      ${bloque('Diagnóstico', h.diagnostico)}${bloque('Plan inicial', h.plan_inicial)}
+    </section>
+    ${alta}
+    <section><h2>Monitoreo</h2>${tMon}</section>
+    <section><h2>Tratamientos</h2>${tTrat}</section>
+    <section><h2>Evolución</h2>${tEvo}</section>
+
+    <div class="firma"><div>Firma y sello del veterinario<br><b>${hE(h.veterinario || user.nombre || '')}</b></div></div>
+    <div class="pie"><span>${clinica}</span><span>Generado el ${new Date().toLocaleString('es-EC')} por ${hE(user.nombre || '')}</span></div>
+    <script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+async function hdTrEstado(id, estado) {
+  const x = _hospDet.tratamientos.find(t => t.id === id); if (!x) return;
+  let cantidad = '', obs = '';
+  if (estado === 'realizado') {
+    cantidad = prompt(`Cantidad realmente administrada de ${x.producto}:`, x.dosis || '');
+    if (cantidad === null) return;
+    obs = prompt('Observaciones (opcional):', '') || '';
+  } else {
+    obs = prompt(estado === 'cancelado' ? 'Motivo de la cancelación:' : 'Motivo por el que no se administró:');
+    if (obs === null) return;
+    if (!obs.trim()) { toast('El motivo es obligatorio', 'rojo'); return; }
+  }
+  const d = await api(`/api/hosp-tratamientos/${id}/estado`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({
+    estado, cantidad_real: cantidad, observaciones: obs, fecha_real: hNow().replace('T', ' ') + ':00' }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Registrado', 'verde');
+  await hospRefrescar('tratamientos');
 }
 
 // ══════════════════════════════════════════════════════════════
