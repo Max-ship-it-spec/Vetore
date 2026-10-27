@@ -18,8 +18,9 @@
       <button class="nav-item active" data-sec="inicio"><span class="ic">◧</span> Dashboard</button>
       <button class="nav-item" data-sec="atencion"><span class="ic">🩺</span> Atenciones</button>
       <button class="nav-item" data-sec="pacientes"><span class="ic">🐾</span> Pacientes</button>
-      <button class="nav-item" data-sec="historia"><span class="ic">📋</span> Historia clínica</button>
-      <button class="nav-item" data-sec="agenda"><span class="ic">📅</span> Agenda del día</button>
+<button class="nav-item" data-sec="historia"><span class="ic">📋</span> Historia clínica</button>
+<button class="nav-item" data-sec="hospitalizacion"><span class="ic">🏥</span> Hospitalización</button>
+<button class="nav-item" data-sec="agenda"><span class="ic">📅</span> Agenda del día</button>
       <button class="nav-item" data-sec="ventas"><span class="ic">🧾</span> Ventas / Recetas</button>
       <button class="nav-item" data-sec="inventario"><span class="ic">📦</span> Inventario</button>
       <button class="nav-item" data-sec="reportes"><span class="ic">📊</span> Reportes</button>
@@ -125,6 +126,34 @@
           </div>
         </div>
       </section>
+
+
+      <!-- HOSPITALIZACIÓN -->
+<section class="section" id="sec-hospitalizacion">
+  <div class="hp-top">
+    <div>
+      <h3 class="greeting-title">Hospitalización</h3>
+      <p class="greeting-sub">Pacientes ingresados, su evolución y altas.</p>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="cargarHospitalizaciones()">⟳ Actualizar</button>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-val" id="hp-st-activas">—</div><div class="stat-label">Hospitalizados ahora</div></div>
+    <div class="stat-card accent"><div class="stat-val" id="hp-st-vigilancia">—</div><div class="stat-label">Con vigilancia / críticos</div></div>
+    <div class="stat-card"><div class="stat-val" id="hp-st-altas">—</div><div class="stat-label">Altas registradas</div></div>
+  </div>
+  <div class="card">
+    <div class="hp-toolbar">
+      <div class="hp-filtros">
+        <button class="hp-f active" id="hp_f_activa" onclick="hospFiltro('activa')">Activas</button>
+        <button class="hp-f" id="hp_f_alta" onclick="hospFiltro('alta')">Con alta</button>
+        <button class="hp-f" id="hp_f_todas" onclick="hospFiltro('todas')">Todas</button>
+      </div>
+      <input type="text" id="hosp_buscar" placeholder="Buscar paciente, propietario o código..." oninput="hospRender()">
+    </div>
+    <div class="hp-grid" id="hospGrid"><p class="hp-vacio">Cargando...</p></div>
+  </div>
+</section>
 
       <!-- AGENDA DEL DÍA -->
 <!-- AGENDA -->
@@ -572,6 +601,96 @@
     <button class="btn btn-primary btn-block" id="ep_btn" onclick="guardarEditarPacienteVet()">Guardar cambios</button>
   </div>
 </div>
+
+
+<div id="modalHosp" class="hosp-overlay" style="display:none">
+  <div class="hosp-box">
+    <div class="hosp-head">
+      <div><h2>Ingreso hospitalario</h2><small id="hospPaciente"></small></div>
+      <button type="button" onclick="cerrarHosp()">✕</button>
+    </div>
+
+    <div id="hospAviso" class="hosp-aviso" style="display:none"></div>
+
+    <h4>1. Datos de ingreso</h4>
+    <div class="hosp-grid">
+      <label>Fecha y hora de ingreso<input type="datetime-local" id="h_fecha"></label>
+      <label>Procedencia
+        <select id="h_proc"><option value="consulta">Derivado de consulta</option><option value="urgencias">Urgencias</option><option value="remision">Remisión externa</option><option value="cirugia">Cirugía</option><option value="otro">Otro</option></select></label>
+      <label>Veterinario responsable<input id="h_vet"></label>
+      <label>Estado inicial
+        <select id="h_estado"><option>Estable</option><option>Requiere vigilancia</option><option>Crítico</option></select></label>
+      <label>Área o sala<input id="h_area" value="Hospitalización general"></label>
+      <label>Jaula o cubículo<input id="h_jaula"></label>
+      <label>Peso actual (kg)<input type="number" step="0.01" id="h_peso"></label>
+    </div>
+
+    <h4>2. Evaluación clínica inicial</h4>
+    <label>Motivo de hospitalización *<textarea id="h_motivo" rows="2"></textarea></label>
+    <label>Antecedentes y resumen de consulta<textarea id="h_ant" rows="2"></textarea></label>
+    <label>Diagnóstico presuntivo o confirmado<textarea id="h_diag" rows="2"></textarea></label>
+    <label>Plan inicial indicado por el veterinario<textarea id="h_plan" rows="2"></textarea></label>
+
+    <h4>3. Consentimiento y autorización</h4>
+    <label>Nombre de quien autoriza (propietario/representante) *<input id="h_autor"></label>
+    <label class="hosp-check"><input type="checkbox" id="h_consent"> Se registró la autorización del propietario para la hospitalización.</label>
+
+    <div class="hosp-foot">
+      <button type="button" class="btn-sec" onclick="cerrarHosp()">Cancelar</button>
+      <button type="button" class="btn-pri" id="btnHospGuardar" onclick="guardarHosp()">Confirmar ingreso</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="mHospDetalle">
+  <div class="modal hp-modal">
+    <button class="modal-close" onclick="cerrarModal('mHospDetalle')">✕</button>
+    <div id="hd_head"></div>
+    <div class="ficha-tabs">
+      <button class="ficha-tab-btn active" id="hd_tab_resumen" onclick="hospTab('resumen')">Resumen</button>
+      <button class="ficha-tab-btn" id="hd_tab_monitoreo" onclick="hospTab('monitoreo')">Monitoreo</button>
+      <button class="ficha-tab-btn" id="hd_tab_tratamientos" onclick="hospTab('tratamientos')">Tratamientos</button>
+      <button class="ficha-tab-btn" id="hd_tab_evolucion" onclick="hospTab('evolucion')">Evolución</button>
+      <button class="ficha-tab-btn" id="hd_tab_alta" onclick="hospTab('alta')">Alta</button>
+    </div>
+    <div id="hd_body"></div>
+  </div>
+</div>
+
+<!-- MODAL: calculadora de dosis -->
+<div class="modal-overlay" id="mCalcDosis">
+  <div class="modal dc-modal">
+    <button class="modal-close" onclick="cerrarModal('mCalcDosis')">✕</button>
+    <h2>Calculadora de dosis de medicamentos</h2>
+    <p class="dc-sub">Introduce la dosis seleccionada. Se calcula la cantidad total de medicamento y el volumen a administrar a partir de la concentración indicada.</p>
+
+    <div class="dc-card">
+      <div class="dc-step"><span>1</span><div><b>Datos del paciente y dosis prescrita</b><small>Utiliza la dosis y la concentración adecuadas para el producto y el paciente.</small></div></div>
+      <div class="dc-grid">
+        <div class="dc-f"><label>Peso del paciente</label>
+          <div class="dc-inp"><input type="number" id="dc_peso" step="0.01" min="0" placeholder="p. ej. 12" oninput="dcCalc()"><span>kg</span></div></div>
+        <div class="dc-f"><label>Dosis prescrita</label>
+          <div class="dc-inp"><input type="number" id="dc_dosis" step="any" min="0" placeholder="p. ej. 0,2" oninput="dcCalc()">
+            <select id="dc_dosis_u" onchange="dcCalc()"><option value="1">mg/kg</option><option value="0.001">µg/kg</option><option value="1000">g/kg</option><option value="vol">ml/kg</option></select></div></div>
+      </div>
+      <div class="dc-f"><label id="dc_conc_lbl">Concentración del fármaco</label>
+        <div class="dc-inp"><input type="number" id="dc_conc" step="any" min="0" placeholder="p. ej. 5" oninput="dcCalc()">
+          <select id="dc_conc_u" onchange="dcCalc()"><option value="1">mg/mL</option><option value="0.001">µg/mL</option><option value="1000">g/mL</option><option value="10">% (g/100 mL)</option></select></div></div>
+    </div>
+
+    <div class="dc-res">
+      <div class="dc-res-t">DOSIS CALCULADA</div>
+      <div class="dc-res-b" id="dc_res">Introduce el peso, la dosis y la concentración para calcular el resultado.</div>
+    </div>
+
+    <div class="dc-aviso"><b>Control de seguridad:</b> esta calculadora solo realiza una conversión matemática. Confirma el fármaco, la dosis, la vía, la formulación y la concentración antes de administrar.</div>
+
+    <button class="btn btn-primary btn-block" id="dc_usar" onclick="dcUsar()" disabled>Usar en el campo Dosis</button>
+  </div>
+</div>
+
+
+
 
 <div class="toast" id="toast"></div>
 

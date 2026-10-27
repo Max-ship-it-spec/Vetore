@@ -5,16 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vetcore — Iniciar sesión</title>
 <link rel="stylesheet" href="css/style.css">
-<style>
-.role-label{display:block;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:8px;}
-.role-box{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;}
-.role-opt{border:1.5px solid var(--border);border-radius:12px;background:#f3f5f4;padding:12px 6px;cursor:pointer;text-align:center;font-family:inherit;transition:.15s;}
-.role-opt:hover{border-color:var(--primary,#0f6b4f);}
-.role-opt .ri{display:block;font-size:22px;margin-bottom:4px;}
-.role-opt .rt{font-size:12.5px;font-weight:700;color:var(--ink,#12261f);}
-.role-opt.active{border-color:var(--primary,#0f6b4f);background:rgba(15,107,79,.1);box-shadow:0 0 0 3px rgba(15,107,79,.12);}
-.role-opt.active .rt{color:var(--primary,#0f6b4f);}
-</style>
 </head>
 <body>
 
@@ -34,14 +24,6 @@
         <label>Contraseña</label>
         <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
       </div>
-
-      <span class="role-label">Ingresar como</span>
-      <div class="role-box" id="roleBox">
-        <button type="button" class="role-opt" data-rol="propietario"><span class="ri">👑</span><span class="rt">Propietario</span></button>
-        <button type="button" class="role-opt" data-rol="veterinario"><span class="ri">🩺</span><span class="rt">Veterinario</span></button>
-        <button type="button" class="role-opt" data-rol="recepcion"><span class="ri">🧑‍💼</span><span class="rt">Recepción</span></button>
-      </div>
-
       <button type="submit" class="btn btn-primary btn-block" id="btnLogin">Iniciar sesión</button>
     </form>
 
