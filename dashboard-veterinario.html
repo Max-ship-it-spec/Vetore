@@ -229,19 +229,98 @@
 </section>
 
       <!-- REPORTES (limitado) -->
-      <section class="section" id="sec-reportes">
-        <div class="card">
-          <div class="card-header"><h3>Mis reportes de hoy</h3></div>
-          <div class="stats-grid" style="padding:0 22px;">
-            <div class="stat-card"><div class="stat-val" id="rp-citas">—</div><div class="stat-label">Mis citas hoy</div></div>
-            <div class="stat-card accent"><div class="stat-val" id="rp-atenciones">—</div><div class="stat-label">Mis atenciones hoy</div></div>
-          </div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Estado de mis citas</th><th>Total</th></tr></thead>
-            <tbody id="tbRepCitas"><tr class="empty-row"><td colspan="2">Cargando...</td></tr></tbody>
-          </table></div>
+<section class="section" id="sec-reportes">
+  <div class="ficha-tabs" style="margin-bottom:14px;">
+    <button class="ficha-tab-btn active" id="rp_tab_resumen" onclick="rpTab('resumen')">Resumen</button>
+    <button class="ficha-tab-btn" id="rp_tab_docs" onclick="rpTab('docs')">Documentos</button>
+    <button class="ficha-tab-btn" id="rp_tab_ventas" onclick="rpTab('ventas')">Ventas</button>
+    <button class="ficha-tab-btn" id="rp_tab_inv" onclick="rpTab('inv')">Inventario</button>
+  </div>
+
+  <!-- RESUMEN -->
+  <div id="rp_resumen">
+    <div class="card">
+      <div class="card-header"><h3>Mis reportes de hoy</h3></div>
+      <div class="stats-grid" style="padding:0 22px;">
+        <div class="stat-card"><div class="stat-val" id="rp-citas">—</div><div class="stat-label">Mis citas hoy</div></div>
+        <div class="stat-card accent"><div class="stat-val" id="rp-atenciones">—</div><div class="stat-label">Mis atenciones hoy</div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Estado de mis citas</th><th>Total</th></tr></thead>
+        <tbody id="tbRepCitas"><tr class="empty-row"><td colspan="2">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- DOCUMENTOS -->
+  <div id="rp_docs" style="display:none;">
+    <div class="card">
+      <div class="card-header"><h3>Repositorio documental <small style="font-weight:400;color:var(--ink-soft);">» Recetas y exámenes</small></h3></div>
+      <div class="inv-toolbar">
+        <input type="text" id="rpd_q" placeholder="Buscar por paciente, propietario, documento o veterinario..." oninput="rpDocsRender()">
+        <select id="rpd_tipo" onchange="rpDocsRender()">
+          <option value="">Todos los tipos</option>
+          <option value="receta">Recetas médicas</option>
+          <option value="laboratorio">Laboratorio y diagnóstico</option>
+        </select>
+        <input type="date" id="rpd_desde" onchange="rpDocsRender()" title="Desde">
+        <input type="date" id="rpd_hasta" onchange="rpDocsRender()" title="Hasta">
+        <button class="btn btn-ghost btn-sm" title="Actualizar" onclick="rpDocsCargar()">⟳</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Documento</th><th>Paciente</th><th>Propietario</th><th>Veterinario</th><th></th></tr></thead>
+        <tbody id="rpd_tb"><tr class="empty-row"><td colspan="7">Cargando...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- VENTAS -->
+  <div id="rp_ventas" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <h3>Ventas y cobros</h3>
+        <div style="display:flex;gap:8px;">
+          <input type="date" id="rpv_desde" onchange="rpVentasCargar()">
+          <input type="date" id="rpv_hasta" onchange="rpVentasCargar()">
         </div>
-      </section>
+      </div>
+      <div class="stats-grid" style="padding:0 22px;">
+        <div class="stat-card accent"><div class="stat-val" id="rpv_cobrado">—</div><div class="stat-label">Cobrado</div></div>
+        <div class="stat-card"><div class="stat-val" id="rpv_pend">—</div><div class="stat-label" id="rpv_pend_l">Pendiente de cobro</div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Método de pago</th><th>Ventas</th><th>Total</th></tr></thead>
+        <tbody id="rpv_metodo"></tbody>
+      </table></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Día</th><th>Ventas</th><th>Total cobrado</th></tr></thead>
+        <tbody id="rpv_dia"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- INVENTARIO -->
+  <div id="rp_inv" style="display:none;">
+    <div class="card">
+      <div class="card-header"><h3>Alertas de stock</h3></div>
+      <div class="stats-grid" style="padding:0 22px;">
+        <div class="stat-card accent"><div class="stat-val" id="rpi_bajo">—</div><div class="stat-label">Stock bajo</div></div>
+        <div class="stat-card"><div class="stat-val" id="rpi_agot">—</div><div class="stat-label">Agotados</div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Producto</th><th>Stock</th><th>Mínimo</th><th>Estado</th></tr></thead>
+        <tbody id="rpi_alertas"></tbody>
+      </table></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-header"><h3>Últimos movimientos</h3></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Saldo</th><th>Motivo</th><th>Por</th></tr></thead>
+        <tbody id="rpi_mov"></tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
 
     </div>
   </div>
@@ -689,6 +768,48 @@
   </div>
 </div>
 
+
+<!-- MODAL: cobrar venta -->
+<div class="modal-overlay" id="mCobro">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" onclick="cerrarModal('mCobro')">✕</button>
+    <h2>Cobrar venta</h2>
+    <p class="modal-sub" id="cb_sub"></p>
+    <div style="text-align:center;margin:10px 0 16px;">
+      <div style="font-size:11px;letter-spacing:.06em;color:var(--ink-soft);font-weight:700;">TOTAL A COBRAR</div>
+      <div style="font-size:34px;font-weight:800;" id="cb_total">$0.00</div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Selecciona el método de pago</div>
+    <div class="ficha-tabs">
+      <button class="ficha-tab-btn" id="cb_t_transferencia" onclick="cbMetodo('transferencia')">Transferencia</button>
+      <button class="ficha-tab-btn active" id="cb_t_efectivo" onclick="cbMetodo('efectivo')">Efectivo</button>
+      <button class="ficha-tab-btn" id="cb_t_tarjeta" onclick="cbMetodo('tarjeta')">Tarjeta</button>
+    </div>
+
+    <div id="cb_transferencia" style="display:none;">
+      <div class="field"><label>Número de referencia o comprobante</label><input type="text" id="cb_ref"></div>
+      <div class="field"><label>Foto del comprobante</label><input type="file" id="cb_comp" accept="image/*"></div>
+      <label class="hc-check"><input type="checkbox" id="cb_conf_t"> Comprobante verificado: el dinero ya está en la cuenta</label>
+    </div>
+
+    <div id="cb_efectivo">
+      <div class="field"><label>Dinero recibido</label><input type="number" step="0.01" id="cb_recibido" oninput="cbCambio()"></div>
+      <div id="cb_cambio" style="font-weight:700;font-size:14px;"></div>
+    </div>
+
+    <div id="cb_tarjeta" style="display:none;">
+      <div class="field"><label>Tipo de tarjeta</label>
+        <select id="cb_tarjeta_tipo"><option>Débito</option><option>Crédito</option></select></div>
+      <label class="hc-check"><input type="checkbox" id="cb_conf_k"> El terminal confirmó el cobro</label>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn btn-ghost" onclick="cbPendiente()">Dejar pendiente</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="cbConfirmar()">Confirmar cobro</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL: agregar producto a la venta de la consulta -->
 <div class="modal-overlay" id="mHxProd">
