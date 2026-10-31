@@ -511,22 +511,8 @@ const HX_VENTA_CARD = `
   <div id="hx_venta_items"></div>
   <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="hxpAbrir()">+ Agregar producto</button>
   <div class="hx-rx-total">Total: <b id="hx_venta_total">$0.00</b></div>
-  <div class="hx-g2" style="margin-top:10px;">
-    <div class="hx-f"><label>Cobro</label>
-      <select id="hx_pago_m" onchange="hxPagoUI()">
-        <option value="efectivo">Efectivo</option>
-        <option value="transferencia">Transferencia</option>
-        <option value="tarjeta">Tarjeta</option>
-        <option value="pendiente">Dejar pendiente de cobro</option>
-      </select></div>
-    <div class="hx-f" id="hx_pf_recibido"><label>Dinero recibido</label><input type="number" step="0.01" id="hx_recibido" oninput="hxPagoUI()"></div>
-    <div class="hx-f" id="hx_pf_tarjeta" style="display:none;"><label>Tipo de tarjeta</label>
-      <select id="hx_tarjeta"><option>Débito</option><option>Crédito</option></select></div>
-    <div class="hx-f" id="hx_pf_ref" style="display:none;"><label>N.º de referencia</label><input type="text" id="hx_ref"></div>
-  </div>
-  <div class="hx-f" id="hx_pf_comp" style="display:none;"><label>Foto / captura del comprobante</label><input type="file" id="hx_comp" accept="image/*"></div>
-  <label class="hc-check" id="hx_pf_conf" style="display:none;"><input type="checkbox" id="hx_conf" onchange="hxPagoUI()"> <span id="hx_conf_txt"></span></label>
-  <div class="hx-stock" id="hx_cambio"></div>
+  <div class="hx-stock" id="hx_cobro_est"></div>
+  <button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" onclick="cbAbrir()">Finalizar venta</button>
 </div>`;
 
 function hxVentaItems() {
@@ -539,9 +525,13 @@ function hxVentaItems() {
 }
 const hxVentaTotal = () => hxVentaItems().reduce((a, x) => a + x.precio * x.cantidad, 0);
 
+let _hxCobro = null;   // cobro confirmado en la ventana "Cobrar venta"
+let _cbMetodo = 'efectivo';
+
 function hxVentaRender() {
   const box = hxEl('hx_venta_items'); if (!box) return;
   const items = hxVentaItems(), total = hxVentaTotal();
+  if (_hxCobro && Math.abs(_hxCobro.total - total) > 0.005) _hxCobro = null; // cambió el total: hay que cobrar de nuevo
   const sinPrecio = !(_hxPrecios[hxV('hx_motivo')] > 0)
     ? '<div class="hx-stock low">No hay precio configurado para este motivo de consulta.</div>' : '';
   box.innerHTML = (items.length ? items.map(x => `
@@ -551,42 +541,61 @@ function hxVentaRender() {
         ${x.origen === 'extra' ? `<button type="button" onclick="hxExtraDel(${x.idx})" aria-label="Quitar">×</button>` : ''}</span>
     </div>`).join('') : '<div class="hx-empty">Sin ítems en la venta</div>') + sinPrecio;
   hxEl('hx_venta_total').textContent = fmtMoney(total);
-  hxPagoUI();
-}
-function hxExtraDel(i) { _hxExtra.splice(i, 1); hxVentaRender(); }
-
-function hxPagoUI() {
-  const m = hxEl('hx_pago_m'); if (!m) return;
-  const met = m.value, total = hxVentaTotal();
-  const show = (id, on) => hxEl(id).style.display = on ? '' : 'none';
-  show('hx_pf_recibido', met === 'efectivo'); show('hx_pf_tarjeta', met === 'tarjeta');
-  show('hx_pf_ref', met === 'transferencia'); show('hx_pf_comp', met === 'transferencia');
-  show('hx_pf_conf', met === 'transferencia' || met === 'tarjeta');
-  hxEl('hx_conf_txt').textContent = met === 'transferencia'
-    ? 'Comprobante verificado: el dinero ya está en la cuenta' : 'El terminal confirmó el cobro';
-  const c = hxEl('hx_cambio');
-  if (met === 'efectivo') {
-    const r = parseFloat(hxEl('hx_recibido').value) || 0;
-    c.className = 'hx-stock' + (r < total ? ' low' : '');
-    c.textContent = r >= total ? 'Cambio: ' + fmtMoney(r - total) : 'Falta: ' + fmtMoney(total - r);
-  } else if (met === 'pendiente') { c.className = 'hx-stock'; c.textContent = 'Se registrará como pendiente de cobro'; }
-  else { c.className = 'hx-stock low'; c.textContent = hxEl('hx_conf').checked ? '' : 'Sin confirmar: quedará pendiente de cobro'; }
+  const est = hxEl('hx_cobro_est');
+  est.className = 'hx-stock' + (_hxCobro ? '' : ' low');
+  est.textContent = _hxCobro ? 'Cobro: ' + _hxCobro.resumen : 'Cobro sin registrar: quedará pendiente';
 }
 
-function hxPagoResolver(total) {
-  const m = hxEl('hx_pago_m').value;
-  if (m === 'pendiente') return { metodo_pago: 'efectivo', estado_pago: 'pendiente' };
+// ── Ventana "Cobrar venta" ───────────────────────────────────
+function cbAbrir() {
+  const total = hxVentaTotal();
+  if (!total) { toast('La venta no tiene ítems con valor', 'rojo'); return; }
+  const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
+  hxEl('cb_sub').textContent = 'Paciente: ' + (p.nombre || '');
+  hxEl('cb_total').textContent = fmtMoney(total);
+  hxEl('cb_ref').value = ''; hxEl('cb_recibido').value = ''; hxEl('cb_comp').value = '';
+  hxEl('cb_conf_t').checked = false; hxEl('cb_conf_k').checked = false;
+  cbMetodo('efectivo');
+  abrirModal('mCobro');
+}
+function cbMetodo(m) {
+  _cbMetodo = m;
+  ['transferencia', 'efectivo', 'tarjeta'].forEach(x => {
+    hxEl('cb_t_' + x).classList.toggle('active', x === m);
+    hxEl('cb_' + x).style.display = x === m ? '' : 'none';
+  });
+  cbCambio();
+}
+function cbCambio() {
+  const total = hxVentaTotal(), r = parseFloat(hxEl('cb_recibido').value) || 0, c = hxEl('cb_cambio');
+  c.style.color = r < total ? '#c0392b' : '#0b6b3f';
+  c.textContent = r >= total ? 'Cambio: ' + fmtMoney(r - total) : 'Falta: ' + fmtMoney(total - r);
+}
+function cbConfirmar() {
+  const total = hxVentaTotal(), m = _cbMetodo;
+  let pago, resumen, file = null;
   if (m === 'efectivo') {
-    const r = parseFloat(hxEl('hx_recibido').value) || 0;
-    if (r < total) return { error: 'El dinero recibido es insuficiente' };
-    return { metodo_pago: 'efectivo', estado_pago: 'pagado', recibido: r, cambio: +(r - total).toFixed(2) };
+    const r = parseFloat(hxEl('cb_recibido').value) || 0;
+    if (r < total) { toast('El dinero recibido es insuficiente', 'rojo'); return; }
+    pago = { metodo_pago: 'efectivo', estado_pago: 'pagado', recibido: r, cambio: +(r - total).toFixed(2) };
+    resumen = `Efectivo · recibido ${fmtMoney(r)} · cambio ${fmtMoney(r - total)}`;
+  } else if (m === 'transferencia') {
+    const ref = hxEl('cb_ref').value.trim(); file = hxEl('cb_comp').files[0] || null;
+    if (!ref && !file) { toast('Ingresa la referencia o adjunta el comprobante', 'rojo'); return; }
+    const ok = hxEl('cb_conf_t').checked;
+    pago = { metodo_pago: 'transferencia', estado_pago: ok ? 'pagado' : 'pendiente', referencia: ref };
+    resumen = `Transferencia${ref ? ' · ref. ' + ref : ''} · ${ok ? 'verificada' : 'por verificar'}`;
+  } else {
+    const ok = hxEl('cb_conf_k').checked, tipo = hxEl('cb_tarjeta_tipo').value;
+    pago = { metodo_pago: 'tarjeta', estado_pago: ok ? 'pagado' : 'pendiente', tipo_tarjeta: tipo };
+    resumen = `Tarjeta ${tipo.toLowerCase()} · ${ok ? 'cobro confirmado' : 'por confirmar'}`;
   }
-  const ok = hxEl('hx_conf').checked;
-  if (m === 'transferencia') {
-    if (!hxV('hx_ref') && !hxEl('hx_comp').files[0]) return { error: 'Ingresa la referencia o adjunta el comprobante' };
-    return { metodo_pago: 'transferencia', estado_pago: ok ? 'pagado' : 'pendiente', referencia: hxV('hx_ref') };
-  }
-  return { metodo_pago: 'tarjeta', estado_pago: ok ? 'pagado' : 'pendiente', tipo_tarjeta: hxEl('hx_tarjeta').value };
+  _hxCobro = { total, pago, file, resumen };
+  cerrarModal('mCobro'); hxVentaRender();
+}
+function cbPendiente() {
+  _hxCobro = { total: hxVentaTotal(), pago: { metodo_pago: 'efectivo', estado_pago: 'pendiente' }, file: null, resumen: 'Pendiente de cobro' };
+  cerrarModal('mCobro'); hxVentaRender();
 }
 
 // Modal "Agregar producto"
@@ -615,10 +624,11 @@ function hxpConfirmar() {
 }
 
 
+
 async function abrirNuevaConsulta(motivo, h) {
   if (!_pacienteHistoriaActivo) return;
-     await asegurarProductos(true);
-  _hxEditId = h ? h.id : null; _hxRx = []; _hxPend = []; _hxExist = []; _hxHosp = false;
+  await Promise.all([asegurarProductos(true), hxPreciosCargar()]);
+   _hxEditId = h ? h.id : null; _hxRx = []; _hxExtra = []; _hxCobro = null; _hxPend = []; _hxExist = []; _hxHosp = false;
   const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
   const ahora = new Date(); ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
   const ahoraStr = ahora.toISOString().slice(0, 16);
@@ -643,7 +653,7 @@ async function abrirNuevaConsulta(motivo, h) {
           <div class="hx-g3">
             <div class="hx-f"><label>Fecha y hora <i>*</i></label><input type="datetime-local" id="hx_fecha" value="${ahoraStr}"></div>
             <div class="hx-f"><label>Médico veterinario</label><input type="text" value="${user.nombre || ''}" disabled></div>
-            <div class="hx-f"><label>Motivo de consulta <i>*</i></label><select id="hx_motivo">${opts(['Consulta General','Vacunación','Control','Desparasitación','Cirugía','Emergencia','Otro'])}</select></div>
+            <div class="hx-f"><label>Motivo de consulta <i>*</i></label><select id="hx_motivo" onchange="hxVentaRender()">${opts(['Consulta General','Vacunación','Control','Desparasitación','Cirugía','Emergencia','Otro'])}</select></div>
           </div>
           ${ta('hx_sint', 'Síntomas', 'Ej. No come', 3, true)}
           ${ta('hx_exam', 'Examen físico clínico')}
@@ -684,21 +694,21 @@ async function abrirNuevaConsulta(motivo, h) {
           <h4>Receta médica <span class="hx-tag">Inventario</span></h4>
           <div class="hx-f" style="position:relative;">
             <label>Buscar medicamento en inventario</label>
-          <input type="text" id="hx_rx_q" placeholder="Escribe el nombre..." autocomplete="off" oninput="hxRxBuscar(this.value)" onfocus="hxRxBuscar(this.value)" onblur="setTimeout(()=>{const b=hxEl('hx_rx_sug'); if(b) b.innerHTML='';},150)">
+            <input type="text" id="hx_rx_q" placeholder="Escribe el nombre..." autocomplete="off" oninput="hxRxBuscar(this.value)" onfocus="hxRxBuscar(this.value)" onblur="setTimeout(()=>{const b=hxEl('hx_rx_sug'); if(b) b.innerHTML='';},150)">
             <div id="hx_rx_sug" class="hx-sug-box"></div>
-            
           </div>
-          
+
           <div id="hx_rx_lista"></div>
           ${ta('hx_trat', 'Plan terapéutico / indicaciones', 'Dieta, cuidados en casa, observaciones...', 3, true)}
-           (pendiente de cobro) y descontar del inventario</label>
-        <div class="hx-rx-actions">
-  <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">💾 Guardar receta</button>
-  <button type="button" class="btn" id="hx_rx_wa" style="background:#25D366;color:#fff;" onclick="hxGuardarReceta(true)">Guardar y enviar por WhatsApp</button>
-</div>
-<div id="hx_recetas"></div>
+          <div class="hx-rx-actions">
+            <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">💾 Guardar receta</button>
+            <button type="button" class="btn" id="hx_rx_wa" style="background:#25D366;color:#fff;" onclick="hxGuardarReceta(true)">Guardar y enviar por WhatsApp</button>
           </div>
- 
+          <div id="hx_recetas"></div>
+        </div>
+
+        ${h ? '' : HX_VENTA_CARD}
+
         <div class="hx-card">
           <h4>🧪 Laboratorio</h4>
           <div class="hx-drop" id="hx_drop" onclick="hxEl('hx_file').click()">Arrastra PDFs aquí o haz clic para subirlos</div>
@@ -734,7 +744,7 @@ async function abrirNuevaConsulta(motivo, h) {
       hxSet('hx_fc', h.fc); hxSet('hx_fr', h.fr); hxSet('hx_diag', h.diagnostico); hxSet('hx_trat', h.recomendaciones);
       hxSet('hx_fecha', String(h.fecha).slice(0, 10) + 'T08:00');
     }
-    hxEl('hx_venta').checked = false; // la venta ya se registró al crear la consulta
+  
     const f = await api('/api/historia-archivos/' + h.id, { headers: authHeaders() });
     _hxExist = f.ok ? f.archivos : [];
   } else {
@@ -1051,11 +1061,8 @@ async function guardarConsulta() {
   const totalV = itemsV.reduce((a, x) => a + x.precio * x.cantidad, 0);
   const sobre = itemsV.find(x => x.producto_id && x.cantidad > x.stock);
   if (!editando && sobre) { toast(`Stock insuficiente de ${sobre.nombre}`, 'rojo'); return; }
-  let pago = null;
-  if (!editando && itemsV.length) {
-    pago = hxPagoResolver(totalV);
-    if (pago.error) { toast(pago.error, 'rojo'); return; }
-  }
+  const cobro = _hxCobro && Math.abs(_hxCobro.total - totalV) < 0.005 ? _hxCobro : null;
+  const pago = cobro ? cobro.pago : { metodo_pago: 'efectivo', estado_pago: 'pendiente' };
  
   const j = pares => pares.filter(([, x]) => x).map(([l, x]) => `${l}: ${x}`).join('\n');
   const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
@@ -1099,7 +1106,7 @@ async function guardarConsulta() {
         descuento: 0, ...pago }) });
       if (!ve.ok) toast('Consulta guardada, pero la venta falló: ' + (ve.error || ''), 'rojo');
       else {
-        const f = hxEl('hx_comp')?.files[0];
+        const f = cobro?.file;
         if (f) {
           const fd = new FormData(); fd.append('comprobante', f);
           await fetch(API + `/api/ventas/${ve.id}/comprobante`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
@@ -1776,7 +1783,8 @@ async function guardarHosp() {
     if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
     toast('Ingreso confirmado: ' + d.codigo, 'verde');
     cerrarHosp();
-    if (confirm('¿Ver la ficha en el módulo Hospitalización?')) ir('hospitalizacion');
+    ir('hospitalizacion');
+    abrirHospDetalle(d.id, 'resumen');
   } finally { btn.disabled = false; }
 }
 // ══════════════════════════════════════════════════════════════
