@@ -28,7 +28,7 @@ function ir(sec) {
   if (sec === 'agenda') cargarCitas();
   if (sec === 'ventas') cargarVentas();
   if (sec === 'inventario') cargarProductos();
-  if (sec === 'reportes') rpTab(_rpTab);
+  if (sec === 'reportes') cargarReportes();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -198,21 +198,12 @@ function abrirDiaAgenda(f) {
       <div class="inicio-list-item">
         <span class="inicio-hora">${c.hora ? c.hora.slice(0, 5) : '—'}</span>
         <span style="flex:1;">${c.paciente_nombre || '—'} (${c.cliente_nombre || '—'}) — ${c.motivo || 'Consulta'}</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="badge ${estadoBadge[c.estado] || 'b-grey'}">${(c.estado || '').replace('_', ' ')}</span>
-          <button class="btn btn-primary btn-sm" ${c.paciente_id ? '' : 'disabled'} onclick="abrirConsultaDeCita(${c.id})">Abrir consulta</button>
-        </div>
+        <span class="badge ${estadoBadge[c.estado] || 'b-grey'}">${(c.estado || '').replace('_', ' ')}</span>
       </div>`).join('')
     : '<p style="color:var(--ink-soft);font-size:13px;">No hay citas este día.</p>';
   abrirModal('mCita');
 }
 
-function abrirConsultaDeCita(id) {
-  const c = _citas.find(x => x.id === id);
-  if (!c || !c.paciente_id) { toast('Esta cita no tiene paciente', 'rojo'); return; }
-  cerrarModal('mCita');
-  irAHistoriaNueva(c.paciente_id, c.motivo);
-}
 const ESTADOS_CITA = ['pendiente', 'confirmada', 'en_espera', 'atendiendo', 'atendida', 'no_asistio', 'cancelada'];
 
 function renderListaCitas() {
@@ -494,141 +485,10 @@ function hxSet(id, val) {
   el.value = val;
 }
  
-// ── VENTA INTEGRADA EN LA CONSULTA ──────────────────────────
-let _hxExtra = [];
-let _hxPrecios = {};
-let _hxpSel = null;
-
-async function hxPreciosCargar() {
-  const d = await api('/api/servicios', { headers: authHeaders() });
-  _hxPrecios = {};
-  if (d.ok) d.servicios.forEach(s => _hxPrecios[s.nombre] = Number(s.precio));
-}
-
-const HX_VENTA_CARD = `
-<div class="hx-card">
-  <h4>🧾 Venta <span class="hx-tag">Ventas</span></h4>
-  <div id="hx_venta_items"></div>
-  <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="hxpAbrir()">+ Agregar producto</button>
-  <div class="hx-rx-total">Total: <b id="hx_venta_total">$0.00</b></div>
-  <div class="hx-stock" id="hx_cobro_est"></div>
-  <button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" onclick="cbAbrir()">Finalizar venta</button>
-</div>`;
-
-function hxVentaItems() {
-  const items = [];
-  const motivo = hxV('hx_motivo'), pc = _hxPrecios[motivo];
-  if (pc > 0) items.push({ nombre: 'Consulta: ' + motivo, precio: pc, cantidad: 1, origen: 'consulta' });
-  _hxRx.forEach(x => items.push({ producto_id: x.producto_id, nombre: x.nombre, precio: x.precio, cantidad: x.cantidad, stock: x.stock, origen: 'rx' }));
-  _hxExtra.forEach((x, i) => items.push({ ...x, origen: 'extra', idx: i }));
-  return items;
-}
-const hxVentaTotal = () => hxVentaItems().reduce((a, x) => a + x.precio * x.cantidad, 0);
-
-let _hxCobro = null;   // cobro confirmado en la ventana "Cobrar venta"
-let _cbMetodo = 'efectivo';
-
-function hxVentaRender() {
-  const box = hxEl('hx_venta_items'); if (!box) return;
-  const items = hxVentaItems(), total = hxVentaTotal();
-  if (_hxCobro && Math.abs(_hxCobro.total - total) > 0.005) _hxCobro = null; // cambió el total: hay que cobrar de nuevo
-  const sinPrecio = !(_hxPrecios[hxV('hx_motivo')] > 0)
-    ? '<div class="hx-stock low">No hay precio configurado para este motivo de consulta.</div>' : '';
-  box.innerHTML = (items.length ? items.map(x => `
-    <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
-      <span>${x.nombre}${x.cantidad > 1 ? ' × ' + x.cantidad : ''}</span>
-      <span>${fmtMoney(x.precio * x.cantidad)}
-        ${x.origen === 'extra' ? `<button type="button" onclick="hxExtraDel(${x.idx})" aria-label="Quitar">×</button>` : ''}</span>
-    </div>`).join('') : '<div class="hx-empty">Sin ítems en la venta</div>') + sinPrecio;
-  hxEl('hx_venta_total').textContent = fmtMoney(total);
-  const est = hxEl('hx_cobro_est');
-  est.className = 'hx-stock' + (_hxCobro ? '' : ' low');
-  est.textContent = _hxCobro ? 'Cobro: ' + _hxCobro.resumen : 'Cobro sin registrar: quedará pendiente';
-}
-
-// ── Ventana "Cobrar venta" ───────────────────────────────────
-function cbAbrir() {
-  const total = hxVentaTotal();
-  if (!total) { toast('La venta no tiene ítems con valor', 'rojo'); return; }
-  const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
-  hxEl('cb_sub').textContent = 'Paciente: ' + (p.nombre || '');
-  hxEl('cb_total').textContent = fmtMoney(total);
-  hxEl('cb_ref').value = ''; hxEl('cb_recibido').value = ''; hxEl('cb_comp').value = '';
-  hxEl('cb_conf_t').checked = false; hxEl('cb_conf_k').checked = false;
-  cbMetodo('efectivo');
-  abrirModal('mCobro');
-}
-function cbMetodo(m) {
-  _cbMetodo = m;
-  ['transferencia', 'efectivo', 'tarjeta'].forEach(x => {
-    hxEl('cb_t_' + x).classList.toggle('active', x === m);
-    hxEl('cb_' + x).style.display = x === m ? '' : 'none';
-  });
-  cbCambio();
-}
-function cbCambio() {
-  const total = hxVentaTotal(), r = parseFloat(hxEl('cb_recibido').value) || 0, c = hxEl('cb_cambio');
-  c.style.color = r < total ? '#c0392b' : '#0b6b3f';
-  c.textContent = r >= total ? 'Cambio: ' + fmtMoney(r - total) : 'Falta: ' + fmtMoney(total - r);
-}
-function cbConfirmar() {
-  const total = hxVentaTotal(), m = _cbMetodo;
-  let pago, resumen, file = null;
-  if (m === 'efectivo') {
-    const r = parseFloat(hxEl('cb_recibido').value) || 0;
-    if (r < total) { toast('El dinero recibido es insuficiente', 'rojo'); return; }
-    pago = { metodo_pago: 'efectivo', estado_pago: 'pagado', recibido: r, cambio: +(r - total).toFixed(2) };
-    resumen = `Efectivo · recibido ${fmtMoney(r)} · cambio ${fmtMoney(r - total)}`;
-  } else if (m === 'transferencia') {
-    const ref = hxEl('cb_ref').value.trim(); file = hxEl('cb_comp').files[0] || null;
-    if (!ref && !file) { toast('Ingresa la referencia o adjunta el comprobante', 'rojo'); return; }
-    const ok = hxEl('cb_conf_t').checked;
-    pago = { metodo_pago: 'transferencia', estado_pago: ok ? 'pagado' : 'pendiente', referencia: ref };
-    resumen = `Transferencia${ref ? ' · ref. ' + ref : ''} · ${ok ? 'verificada' : 'por verificar'}`;
-  } else {
-    const ok = hxEl('cb_conf_k').checked, tipo = hxEl('cb_tarjeta_tipo').value;
-    pago = { metodo_pago: 'tarjeta', estado_pago: ok ? 'pagado' : 'pendiente', tipo_tarjeta: tipo };
-    resumen = `Tarjeta ${tipo.toLowerCase()} · ${ok ? 'cobro confirmado' : 'por confirmar'}`;
-  }
-  _hxCobro = { total, pago, file, resumen };
-  cerrarModal('mCobro'); hxVentaRender();
-}
-function cbPendiente() {
-  _hxCobro = { total: hxVentaTotal(), pago: { metodo_pago: 'efectivo', estado_pago: 'pendiente' }, file: null, resumen: 'Pendiente de cobro' };
-  cerrarModal('mCobro'); hxVentaRender();
-}
-
-// Modal "Agregar producto"
-function hxpAbrir() {
-  _hxpSel = null; hxEl('hxp_q').value = ''; hxEl('hxp_cant').value = 1;
-  hxpBuscar(''); abrirModal('mHxProd');
-}
-function hxpBuscar(t) {
-  const q = _norm(String(t).trim());
-  const r = _productos.filter(p => p.activo != 0 && Number(p.stock) > 0 && (!q || _norm(p.nombre).includes(q) || _norm(p.marca).includes(q))).slice(0, 8);
-  hxEl('hxp_res').innerHTML = r.length ? r.map(p => `
-    <div onclick="_hxpSel=${p.id};hxpBuscar(hxEl('hxp_q').value)"
-      style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:13.5px;${_hxpSel === p.id ? 'background:#e1f1ea;border-color:#0f6b4f;' : ''}">
-      <span>${p.nombre}${p.marca ? ' · ' + p.marca : ''}</span>
-      <small>${fmtMoney(p.precio_venta)} · stock ${p.stock}</small>
-    </div>`).join('') : '<div class="hx-empty">Sin resultados</div>';
-}
-function hxpConfirmar() {
-  const p = _productos.find(x => x.id === _hxpSel);
-  if (!p) { toast('Selecciona un producto', 'rojo'); return; }
-  const cant = Math.max(1, parseInt(hxEl('hxp_cant').value) || 1);
-  const ya = _hxExtra.find(x => x.producto_id === p.id);
-  if (ya) ya.cantidad += cant;
-  else _hxExtra.push({ producto_id: p.id, nombre: p.nombre, precio: Number(p.precio_venta), cantidad: cant, stock: Number(p.stock) });
-  cerrarModal('mHxProd'); hxVentaRender();
-}
-
-
-
 async function abrirNuevaConsulta(motivo, h) {
   if (!_pacienteHistoriaActivo) return;
-  await Promise.all([asegurarProductos(true), hxPreciosCargar()]);
-   _hxEditId = h ? h.id : null; _hxRx = []; _hxExtra = []; _hxCobro = null; _hxPend = []; _hxExist = []; _hxHosp = false;
+     await asegurarProductos(true);
+  _hxEditId = h ? h.id : null; _hxRx = []; _hxPend = []; _hxExist = []; _hxHosp = false;
   const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
   const ahora = new Date(); ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
   const ahoraStr = ahora.toISOString().slice(0, 16);
@@ -653,7 +513,7 @@ async function abrirNuevaConsulta(motivo, h) {
           <div class="hx-g3">
             <div class="hx-f"><label>Fecha y hora <i>*</i></label><input type="datetime-local" id="hx_fecha" value="${ahoraStr}"></div>
             <div class="hx-f"><label>Médico veterinario</label><input type="text" value="${user.nombre || ''}" disabled></div>
-            <div class="hx-f"><label>Motivo de consulta <i>*</i></label><select id="hx_motivo" onchange="hxVentaRender()">${opts(['Consulta General','Vacunación','Control','Desparasitación','Cirugía','Emergencia','Otro'])}</select></div>
+            <div class="hx-f"><label>Motivo de consulta <i>*</i></label><select id="hx_motivo">${opts(['Consulta General','Vacunación','Control','Desparasitación','Cirugía','Emergencia','Otro'])}</select></div>
           </div>
           ${ta('hx_sint', 'Síntomas', 'Ej. No come', 3, true)}
           ${ta('hx_exam', 'Examen físico clínico')}
@@ -694,21 +554,21 @@ async function abrirNuevaConsulta(motivo, h) {
           <h4>Receta médica <span class="hx-tag">Inventario</span></h4>
           <div class="hx-f" style="position:relative;">
             <label>Buscar medicamento en inventario</label>
-            <input type="text" id="hx_rx_q" placeholder="Escribe el nombre..." autocomplete="off" oninput="hxRxBuscar(this.value)" onfocus="hxRxBuscar(this.value)" onblur="setTimeout(()=>{const b=hxEl('hx_rx_sug'); if(b) b.innerHTML='';},150)">
+          <input type="text" id="hx_rx_q" placeholder="Escribe el nombre..." autocomplete="off" oninput="hxRxBuscar(this.value)" onfocus="hxRxBuscar(this.value)" onblur="setTimeout(()=>{const b=hxEl('hx_rx_sug'); if(b) b.innerHTML='';},150)">
             <div id="hx_rx_sug" class="hx-sug-box"></div>
+            
           </div>
-
+          
           <div id="hx_rx_lista"></div>
           ${ta('hx_trat', 'Plan terapéutico / indicaciones', 'Dieta, cuidados en casa, observaciones...', 3, true)}
-          <div class="hx-rx-actions">
-            <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">💾 Guardar receta</button>
-            <button type="button" class="btn" id="hx_rx_wa" style="background:#25D366;color:#fff;" onclick="hxGuardarReceta(true)">Guardar y enviar por WhatsApp</button>
+          <label class="hc-check" style="margin-top:6px;"><input type="checkbox" id="hx_venta" checked> Registrar venta (pendiente de cobro) y descontar del inventario</label>
+        <div class="hx-rx-actions">
+  <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">💾 Guardar receta</button>
+  <button type="button" class="btn" id="hx_rx_wa" style="background:#25D366;color:#fff;" onclick="hxGuardarReceta(true)">Guardar y enviar por WhatsApp</button>
+</div>
+<div id="hx_recetas"></div>
           </div>
-          <div id="hx_recetas"></div>
-        </div>
-
-        ${h ? '' : HX_VENTA_CARD}
-
+ 
         <div class="hx-card">
           <h4>🧪 Laboratorio</h4>
           <div class="hx-drop" id="hx_drop" onclick="hxEl('hx_file').click()">Arrastra PDFs aquí o haz clic para subirlos</div>
@@ -744,7 +604,7 @@ async function abrirNuevaConsulta(motivo, h) {
       hxSet('hx_fc', h.fc); hxSet('hx_fr', h.fr); hxSet('hx_diag', h.diagnostico); hxSet('hx_trat', h.recomendaciones);
       hxSet('hx_fecha', String(h.fecha).slice(0, 10) + 'T08:00');
     }
-  
+    hxEl('hx_venta').checked = false; // la venta ya se registró al crear la consulta
     const f = await api('/api/historia-archivos/' + h.id, { headers: authHeaders() });
     _hxExist = f.ok ? f.archivos : [];
   } else {
@@ -803,7 +663,6 @@ function hxRxSet(i, k, v) {
 }
 function hxRxDel(i) { _hxRx.splice(i, 1); hxRxRender(); }
 function hxRxRender() {
-  setTimeout(hxVentaRender, 0);
   const box = hxEl('hx_rx_lista');
   if (!_hxRx.length) { box.innerHTML = '<div class="hx-empty">Aún no hay medicamentos en la receta</div>'; return; }
   const total = _hxRx.reduce((a, x) => a + x.precio * x.cantidad, 0);
@@ -1057,12 +916,8 @@ async function guardarConsulta() {
   if (!fecha || !v('hx_motivo')) { toast('Fecha y motivo de consulta son obligatorios', 'rojo'); return; }
   if (!v('hx_sint') || !v('hx_diag') || !v('hx_trat')) { toast('Completa síntomas, diagnóstico y plan terapéutico', 'rojo'); return; }
   const editando = !!_hxEditId;
-    const itemsV = hxVentaItems();
-  const totalV = itemsV.reduce((a, x) => a + x.precio * x.cantidad, 0);
-  const sobre = itemsV.find(x => x.producto_id && x.cantidad > x.stock);
-  if (!editando && sobre) { toast(`Stock insuficiente de ${sobre.nombre}`, 'rojo'); return; }
-  const cobro = _hxCobro && Math.abs(_hxCobro.total - totalV) < 0.005 ? _hxCobro : null;
-  const pago = cobro ? cobro.pago : { metodo_pago: 'efectivo', estado_pago: 'pendiente' };
+  const sobre = _hxRx.find(x => x.cantidad > x.stock);
+  if (!editando && hxEl('hx_venta').checked && sobre) { toast(`Stock insuficiente de ${sobre.nombre}`, 'rojo'); return; }
  
   const j = pares => pares.filter(([, x]) => x).map(([l, x]) => `${l}: ${x}`).join('\n');
   const p = _pacientes.find(x => String(x.id) === String(_pacienteHistoriaActivo)) || {};
@@ -1098,20 +953,13 @@ async function guardarConsulta() {
     // PDFs de laboratorio
     if (_hxPend.length) await hxSubirPdfs(historiaId);
  
-    // Venta integrada: guarda en Ventas, descuenta inventario una sola vez
-    if (!editando && itemsV.length) {
+    // Venta pendiente + descuento de inventario (solo consulta nueva)
+    if (!editando && hxEl('hx_venta').checked && _hxRx.length) {
       const ve = await api('/api/ventas', { method: 'POST', headers: authHeaders(), body: JSON.stringify({
-        cliente_id: p.cliente_id || null, paciente_id: _pacienteHistoriaActivo, historia_id: historiaId,
-        items: itemsV.map(x => ({ producto_id: x.producto_id || null, nombre: x.nombre, precio: x.precio, cantidad: x.cantidad })),
-        descuento: 0, ...pago }) });
+        cliente_id: p.cliente_id || null, paciente_id: _pacienteHistoriaActivo,
+        items: _hxRx.map(x => ({ producto_id: x.producto_id, nombre: x.nombre, precio: x.precio, cantidad: x.cantidad })),
+        descuento: 0, metodo_pago: 'efectivo', estado_pago: 'pendiente' }) });
       if (!ve.ok) toast('Consulta guardada, pero la venta falló: ' + (ve.error || ''), 'rojo');
-      else {
-        const f = cobro?.file;
-        if (f) {
-          const fd = new FormData(); fd.append('comprobante', f);
-          await fetch(API + `/api/ventas/${ve.id}/comprobante`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
-        }
-      }
     }
  
     // Hospitalización
@@ -1263,27 +1111,14 @@ async function cargarVentas() {
   _ventas = d.ok ? d.ventas : [];
   document.getElementById('tbVentas').innerHTML = _ventas.length
     ? _ventas.map(v => `<tr>
-        <td>${v.numero ? 'V-' + String(v.numero).padStart(4, '0') : '#' + v.id}</td>
         <td>${fmtFecha(v.created_at)}</td>
         <td>${v.cliente_nombre || '—'}</td>
         <td>${v.paciente_nombre || '—'}</td>
         <td><strong>${fmtMoney(v.total)}</strong></td>
         <td><span class="badge ${v.estado_pago === 'pagado' ? 'b-primary' : 'b-accent'}">${v.estado_pago}</span></td>
-        <td><div style="display:flex;gap:6px;">
-          <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
-          ${v.estado_pago !== 'pagado' ? `<button class="btn btn-primary btn-sm" onclick="cobrarVenta(${v.id})">Cobrar</button>` : ''}
-        </div></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button></td>
       </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="7">Aún no has registrado ventas</td></tr>';
-}
-async function cobrarVenta(id) {
-  const m = (prompt('Método de pago (efectivo, tarjeta o transferencia):', 'efectivo') || '').trim().toLowerCase();
-  if (!m) return;
-  if (!['efectivo', 'tarjeta', 'transferencia'].includes(m)) { toast('Método no válido', 'rojo'); return; }
-  const d = await api(`/api/ventas/${id}/pago`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ metodo_pago: m }) });
-  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Cobro registrado', 'verde');
-  cargarVentas();
+    : '<tr class="empty-row"><td colspan="6">Aún no has registrado ventas</td></tr>';
 }
 async function abrirCrearVenta() {
   await Promise.all([asegurarClientesCargados(), cargarProductosParaVenta()]);
@@ -1370,13 +1205,7 @@ function verComprobante(id) {
       </div>`).join('')}
     </div>
     <div style="display:flex;justify-content:space-between;font-weight:800;font-size:16px;margin-top:6px;"><span>Total</span><span>${fmtMoney(v.total)}</span></div>
-       <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">
-      ${v.numero ? 'V-' + String(v.numero).padStart(4, '0') + ' · ' : ''}Método: ${v.metodo_pago}${v.tipo_tarjeta ? ' (' + v.tipo_tarjeta + ')' : ''} — Estado: ${v.estado_pago}
-      ${v.veterinario_nombre ? '<br>Veterinario: ' + v.veterinario_nombre : ''}
-      ${v.referencia ? '<br>Referencia: ' + v.referencia : ''}
-      ${v.recibido != null ? '<br>Recibido: ' + fmtMoney(v.recibido) + ' · Cambio: ' + fmtMoney(v.cambio || 0) : ''}
-      ${v.comprobante_url ? `<br><a href="${v.comprobante_url}" target="_blank" rel="noopener">Ver comprobante</a>` : ''}
-    </p>
+    <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">Método: ${v.metodo_pago} — Estado: ${v.estado_pago}</p>
   `;
   abrirModal('mComprobante');
 }
@@ -1394,103 +1223,6 @@ async function cargarReportes() {
   document.getElementById('tbRepCitas').innerHTML = d.citasPorEstado.length
     ? d.citasPorEstado.map(c => `<tr><td>${c.estado}</td><td>${c.total}</td></tr>`).join('')
     : '<tr class="empty-row"><td colspan="2">Sin datos hoy</td></tr>';
-}
-
-
-
-// ── REPORTES: pestañas ───────────────────────────────────────
-let _rpTab = 'resumen', _rpDocs = [];
-function rpTab(t) {
-  _rpTab = t;
-  ['resumen', 'docs', 'ventas', 'inv'].forEach(x => {
-    document.getElementById('rp_tab_' + x).classList.toggle('active', x === t);
-    document.getElementById('rp_' + x).style.display = x === t ? '' : 'none';
-  });
-  if (t === 'resumen') cargarReportes();
-  if (t === 'docs') rpDocsCargar();
-  if (t === 'ventas') rpVentasCargar();
-  if (t === 'inv') rpInvCargar();
-}
-
-// ── Repositorio documental ───────────────────────────────────
-const RP_TIPO = { receta: 'Receta médica', laboratorio: 'Laboratorio y diagnóstico' };
-async function rpDocsCargar() {
-  const d = await api('/api/documentos', { headers: authHeaders() });
-  _rpDocs = d.ok ? d.documentos : [];
-  rpDocsRender();
-}
-function rpDocsRender() {
-  const q = _norm(document.getElementById('rpd_q').value.trim());
-  const tipo = document.getElementById('rpd_tipo').value;
-  const desde = document.getElementById('rpd_desde').value, hasta = document.getElementById('rpd_hasta').value;
-  const lista = _rpDocs.filter(x =>
-    (!tipo || x.tipo === tipo) &&
-    (!desde || x.fecha >= desde) && (!hasta || x.fecha <= hasta) &&
-    (!q || _norm([x.nombre, x.paciente_nombre, x.cliente_nombre, x.veterinario].join(' ')).includes(q)));
-  document.getElementById('rpd_tb').innerHTML = lista.length
-    ? lista.map(x => `<tr>
-        <td>${fmtFecha(x.fecha)}</td>
-        <td><span class="badge ${x.tipo === 'receta' ? 'b-primary' : 'b-accent'}">${RP_TIPO[x.tipo] || x.tipo}</span></td>
-        <td>${hE(x.nombre)}</td>
-        <td>${hE(x.paciente_nombre)}</td>
-        <td>${hE(x.cliente_nombre)}</td>
-        <td>${hE(x.veterinario) || '—'}</td>
-        <td><div style="display:flex;gap:6px;">
-          <a class="btn btn-ghost btn-sm" href="${x.url}" target="_blank" rel="noopener">Abrir</a>
-          <button class="btn btn-primary btn-sm" onclick="rpVerHistoria(${x.paciente_id})">Historia clínica</button>
-        </div></td>
-      </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="7">No hay documentos con esos filtros</td></tr>';
-}
-async function rpVerHistoria(pid) {
-  window._hcForzado = String(pid);
-  await asegurarPacientesCargados();
-  ir('historia');
-  await cargarSelectPacientesHistoria();
-  document.getElementById('hc_paciente_select').value = pid;
-  await cargarHistoriaPaciente();
-  window._hcForzado = '';
-}
-
-// ── Informe de ventas ────────────────────────────────────────
-async function rpVentasCargar() {
-  const $ = id => document.getElementById(id);
-  const h = new Date();
-  if (!$('rpv_desde').value) $('rpv_desde').value = ymd(new Date(h.getFullYear(), h.getMonth(), 1));
-  if (!$('rpv_hasta').value) $('rpv_hasta').value = ymd(h);
-  const d = await api(`/api/reportes/ventas?desde=${$('rpv_desde').value}&hasta=${$('rpv_hasta').value}`, { headers: authHeaders() });
-  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  $('rpv_cobrado').textContent = fmtMoney(d.porMetodo.reduce((a, m) => a + Number(m.total), 0));
-  $('rpv_pend').textContent = fmtMoney(d.pendiente.total);
-  $('rpv_pend_l').textContent = `Pendiente de cobro (${d.pendiente.cantidad})`;
-  $('rpv_metodo').innerHTML = d.porMetodo.length
-    ? d.porMetodo.map(m => `<tr><td style="text-transform:capitalize;">${hE(m.metodo)}</td><td>${m.cantidad}</td><td>${fmtMoney(m.total)}</td></tr>`).join('')
-    : '<tr class="empty-row"><td colspan="3">Sin cobros en este período</td></tr>';
-  $('rpv_dia').innerHTML = d.porDia.length
-    ? d.porDia.map(m => `<tr><td>${fmtFecha(m.dia)}</td><td>${m.cantidad}</td><td>${fmtMoney(m.total)}</td></tr>`).join('')
-    : '<tr class="empty-row"><td colspan="3">Sin ventas en este período</td></tr>';
-}
-
-// ── Informe de inventario ────────────────────────────────────
-async function rpInvCargar() {
-  const $ = id => document.getElementById(id);
-  await asegurarProductos(true);
-  const alerta = _productos.filter(p => p.activo != 0 && estadoStock(p) !== 'ok')
-    .sort((a, b) => Number(a.stock) - Number(b.stock));
-  const agot = alerta.filter(p => estadoStock(p) === 'agotado').length;
-  $('rpi_bajo').textContent = alerta.length - agot;
-  $('rpi_agot').textContent = agot;
-  $('rpi_alertas').innerHTML = alerta.length
-    ? alerta.map(p => `<tr><td>${hE(p.nombre)}</td><td>${p.stock}</td><td>${p.stock_minimo}</td>
-        <td><span class="badge ${estadoStock(p) === 'agotado' ? 'b-danger' : 'b-accent'}">${estadoStock(p) === 'agotado' ? 'Agotado' : 'Stock bajo'}</span></td></tr>`).join('')
-    : '<tr class="empty-row"><td colspan="4">Sin alertas de stock</td></tr>';
-  const d = await api('/api/reportes/movimientos', { headers: authHeaders() });
-  const mv = d.ok ? d.movimientos : [];
-  $('rpi_mov').innerHTML = mv.length
-    ? mv.map(m => `<tr><td>${fmtFecha(m.created_at)}</td><td>${hE(m.producto)}</td><td style="text-transform:capitalize;">${hE(m.tipo)}</td>
-        <td><strong style="color:${m.cantidad > 0 ? '#0b6b3f' : '#c0392b'};">${m.cantidad > 0 ? '+' : ''}${m.cantidad}</strong></td>
-        <td>${m.saldo}</td><td>${hE(m.motivo) || '—'}</td><td>${hE(m.usuario_nombre) || '—'}</td></tr>`).join('')
-    : '<tr class="empty-row"><td colspan="7">Sin movimientos</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1783,8 +1515,7 @@ async function guardarHosp() {
     if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
     toast('Ingreso confirmado: ' + d.codigo, 'verde');
     cerrarHosp();
-    ir('hospitalizacion');
-    abrirHospDetalle(d.id, 'resumen');
+    if (confirm('¿Ver la ficha en el módulo Hospitalización?')) ir('hospitalizacion');
   } finally { btn.disabled = false; }
 }
 // ══════════════════════════════════════════════════════════════
