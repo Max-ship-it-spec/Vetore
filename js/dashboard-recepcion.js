@@ -46,20 +46,26 @@ function poblarSelectVeterinarios(selectId, valorSel) {
 // DASHBOARD (inicio)
 // ══════════════════════════════════════════════════════════════
 async function cargarInicio() {
-  const [citasD, atD, pendD, cajaD] = await Promise.all([
+  const [citasD, atD, ventasD] = await Promise.all([
     api('/api/citas?hoy=1', { headers: authHeaders() }),
     api('/api/atenciones', { headers: authHeaders() }),
-    api('/api/citas?pendientes=1', { headers: authHeaders() }),
-    api('/api/caja', { headers: authHeaders() }),
+    api('/api/ventas', { headers: authHeaders() }),
   ]);
   const citasHoy = citasD.ok ? citasD.citas : [];
   const atenciones = atD.ok ? atD.atenciones : [];
+  const ventas = ventasD.ok ? ventasD.ventas : [];
+
+  const pendD = await api('/api/citas?pendientes=1', { headers: authHeaders() });
   const pendientes = pendD.ok ? pendD.citas : [];
+
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const ventasHoy = ventas.filter(v => String(v.created_at).slice(0, 10) === hoyStr && v.estado_pago === 'pagado');
+  const totalHoy = ventasHoy.reduce((a, v) => a + Number(v.total || 0), 0);
 
   document.getElementById('st-citasHoy').textContent = citasHoy.length;
   document.getElementById('st-pendientes').textContent = pendientes.length;
   document.getElementById('st-llegadas').textContent = atenciones.length;
-  document.getElementById('st-cobrosHoy').textContent = fmtMoney(cajaD.ok ? cajaD.total : 0);
+  document.getElementById('st-cobrosHoy').textContent = fmtMoney(totalHoy);
 
   document.getElementById('inicioAgendaDia').innerHTML = citasHoy.length
     ? citasHoy.map(c => `
@@ -454,10 +460,9 @@ async function guardarVenta() {
   };
   const d = await api('/api/ventas', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-toast(`Venta registrada por ${fmtMoney(d.total)}`, 'verde');
-cerrarModal('mVenta');
-await cargarVentas();
-verComprobante(d.id);
+  toast(`Venta registrada por ${fmtMoney(d.total)}`, 'verde');
+  cerrarModal('mVenta');
+  cargarVentas();
 }
 async function eliminarVenta(id) {
   if (!confirm('¿Eliminar esta venta?')) return;
@@ -487,7 +492,6 @@ function verComprobante(id) {
     <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>Descuento</span><span>-${fmtMoney(v.descuento)}</span></div>
     <div style="display:flex;justify-content:space-between;font-weight:800;font-size:16px;margin-top:6px;"><span>Total</span><span>${fmtMoney(v.total)}</span></div>
     <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">Método: ${v.metodo_pago} — Estado: ${v.estado_pago}</p>
-    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="imprimirComprobante()">Imprimir</button>
   `;
   abrirModal('mComprobante');
 }
@@ -635,31 +639,11 @@ async function guardarAtencion() {
     origen: document.getElementById('at_origen').value,
     prioridad: document.getElementById('at_prioridad').value,
   };
-  if (body.origen === 'con_cita') {
-    const cd = await api('/api/citas?hoy=1', { headers: authHeaders() });
-    const cita = (cd.ok ? cd.citas : []).find(c =>
-      String(c.paciente_id) === String(paciente_id) && ['pendiente', 'confirmada'].includes(c.estado));
-    if (cita) {
-      body.cita_id = cita.id;
-      if (!body.veterinario_id && cita.veterinario_id) body.veterinario_id = cita.veterinario_id;
-    }
-  }
   const d = await api('/api/atenciones', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  if (body.cita_id) {
-    await api(`/api/citas/${body.cita_id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ estado: 'en_espera' }) });
-  }
   toast('Llegada registrada', 'verde');
   cerrarModal('mAtencion');
   cargarAtenciones();
-}
-
-function imprimirComprobante() {
-  const html = document.getElementById('cp_contenido').innerHTML.replace(/<button[\s\S]*?<\/button>/g, '');
-  const w = window.open('', '_blank', 'width=420,height=640');
-  w.document.write(`<html><head><title>Comprobante</title><style>body{font-family:sans-serif;padding:20px;font-size:14px}</style></head><body><h3>Vetcore — Comprobante</h3>${html}</body></html>`);
-  w.document.close();
-  w.print();
 }
 
 // ══════════════════════════════════════════════════════════════
