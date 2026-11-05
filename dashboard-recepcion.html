@@ -21,6 +21,7 @@
       <button class="nav-item" data-sec="clientes"><span class="ic">👤</span> Clientes</button>
       <button class="nav-item" data-sec="pacientes"><span class="ic">🐾</span> Pacientes</button>
       <button class="nav-item" data-sec="ventas"><span class="ic">💵</span> Ventas / Cobros</button>
+      <button class="nav-item" data-sec="inventario"><span class="ic">📦</span> Inventario</button>
     </nav>
     <div class="sidebar-foot">
       <div class="sidebar-user">
@@ -129,18 +130,58 @@
       </section>
 
       <!-- VENTAS / COBROS -->
-      <section class="section" id="sec-ventas">
-        <div class="card">
-          <div class="card-header">
-            <h3>Ventas / Cobros</h3>
-            <button class="btn btn-primary btn-sm" onclick="abrirCrearVenta()">+ Nueva venta</button>
-          </div>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Fecha</th><th>Cliente</th><th>Mascota</th><th>Total</th><th>Pago</th><th></th></tr></thead>
-            <tbody id="tbVentas"><tr class="empty-row"><td colspan="6">Cargando...</td></tr></tbody>
-          </table></div>
-        </div>
-      </section>
+<!-- VENTAS / COBROS -->
+<section class="section" id="sec-ventas">
+  <div class="inicio-grid">
+    <div class="card" style="cursor:pointer;" onclick="rvFiltro('cobrar_consulta')">
+      <div style="padding:22px;">
+        <div style="font-size:30px;">🩺</div>
+        <h3 style="margin:6px 0;">Venta de consulta</h3>
+        <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Cargar receta, consulta y servicios de una atención médica.</p>
+        <span class="badge b-accent" id="rv_badge_cons">0 por cobrar</span>
+      </div>
+    </div>
+    <div class="card" style="cursor:pointer;" onclick="abrirCrearVenta()">
+      <div style="padding:22px;">
+        <div style="font-size:30px;">🛒</div>
+        <h3 style="margin:6px 0;">Venta individual</h3>
+        <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Buscar productos y vender directamente, sin consulta (mostrador).</p>
+        <span class="badge b-primary">+ Nueva venta</span>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h3>Historial de ventas</h3></div>
+    <div class="ficha-tabs" style="margin:0 22px 10px;">
+      <button class="ficha-tab-btn active" id="rv_f_todas" onclick="rvFiltro('todas')">Todas</button>
+      <button class="ficha-tab-btn" id="rv_f_consulta" onclick="rvFiltro('consulta')">Consulta</button>
+      <button class="ficha-tab-btn" id="rv_f_individual" onclick="rvFiltro('individual')">Individuales</button>
+      <button class="ficha-tab-btn" id="rv_f_pendientes" onclick="rvFiltro('pendientes')">Pendientes de cobro</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>N.º</th><th>Fecha</th><th>Tipo</th><th>Cliente</th><th>Mascota</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="tbVentas"><tr class="empty-row"><td colspan="10">Cargando...</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- INVENTARIO (solo consulta) -->
+<section class="section" id="sec-inventario">
+  <div class="card">
+    <div class="card-header"><h3>Inventario <small style="font-weight:400;color:var(--ink-soft);">» Consulta de disponibilidad</small></h3></div>
+    <div class="inv-toolbar">
+      <input type="text" id="inv_buscar" placeholder="Buscar producto..." oninput="renderInventario()">
+      <select id="inv_f_stock" onchange="renderInventario()">
+        <option value="">Stock...</option><option value="ok">Disponible</option><option value="bajo">Stock bajo</option><option value="agotado">Agotado</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="cargarInventario()">⟳</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Producto</th><th>Marca</th><th>Línea</th><th>Precio venta</th><th>Stock</th><th>Estado</th></tr></thead>
+      <tbody id="tbInventario"><tr class="empty-row"><td colspan="6">Cargando...</td></tr></tbody>
+    </table></div>
+  </div>
+</section>
 
     </div>
   </div>
@@ -253,12 +294,14 @@
     <div class="form-row">
       <div class="field"><label>Descuento</label><input type="number" step="0.01" id="ve_descuento" value="0" oninput="renderItemsVenta()"></div>
       <div class="field"><label>Estado de pago</label>
-        <select id="ve_estado_pago">
+        <select id="ve_estado_pago" onchange="document.getElementById('ve_abono_w').style.display=this.value==='parcial'?'':'none'">
           <option value="pagado">Pagado ahora</option>
+          <option value="parcial">Pago parcial (abono)</option>
           <option value="pendiente">Pendiente de cobro</option>
         </select>
       </div>
     </div>
+    <div class="field" id="ve_abono_w" style="display:none;"><label>Abono recibido</label><input type="number" step="0.01" id="ve_abono"></div>
     <div class="field"><label>Método de pago</label>
       <select id="ve_metodo">
         <option value="efectivo">Efectivo</option>
@@ -329,6 +372,31 @@
     <button class="btn btn-primary btn-block" onclick="guardarAtencion()">Registrar llegada</button>
   </div>
 </div>
+
+<div class="modal-overlay" id="mPago">
+  <div class="modal" style="max-width:460px;">
+    <button class="modal-close" onclick="cerrarModal('mPago')">✕</button>
+    <h2>Registrar pago</h2>
+    <p class="modal-sub" id="pg_sub"></p>
+    <input type="hidden" id="pg_id">
+    <div style="text-align:center;margin:8px 0 14px;">
+      <div style="font-size:11px;letter-spacing:.06em;color:var(--ink-soft);font-weight:700;">SALDO PENDIENTE</div>
+      <div style="font-size:30px;font-weight:800;" id="pg_saldo">$0.00</div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Monto a cobrar</label><input type="number" step="0.01" id="pg_monto" oninput="pgCambio()"></div>
+      <div class="field"><label>Método de pago</label>
+        <select id="pg_metodo" onchange="pgMetodo()"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="tarjeta">Tarjeta</option></select></div>
+    </div>
+    <div id="pg_ef_w"><div class="field"><label>Dinero recibido</label><input type="number" step="0.01" id="pg_recibido" oninput="pgCambio()"></div>
+      <div id="pg_cambio" style="font-weight:700;margin-bottom:10px;"></div></div>
+    <div id="pg_tr_w" style="display:none;"><div class="field"><label>Referencia del comprobante</label><input type="text" id="pg_ref"></div>
+      <div class="field"><label>Foto del comprobante (opcional)</label><input type="file" id="pg_comp" accept="image/*"></div></div>
+    <div id="pg_tj_w" style="display:none;"><div class="field"><label>Tipo de tarjeta</label><select id="pg_tj"><option>Débito</option><option>Crédito</option></select></div></div>
+    <button class="btn btn-primary btn-block" id="pg_btn" onclick="pgConfirmar()">Confirmar pago</button>
+  </div>
+</div>
+
 
 <div class="toast" id="toast"></div>
 
