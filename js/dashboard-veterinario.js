@@ -1245,6 +1245,14 @@ function limpiarFiltrosInv() {
   renderProductos();
 }
 
+async function solicitarProducto() {
+  const nombre = (prompt('Producto que necesitas:') || '').trim(); if (!nombre) return;
+  const cantidad = parseInt(prompt('Cantidad:', '1')) || 1;
+  const nota = (prompt('Nota (opcional):', '') || '').trim();
+  const d = await api('/api/solicitudes-producto', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ nombre, cantidad, nota }) });
+  toast(d.ok ? 'Solicitud enviada al propietario' : (d.error || 'Error'), d.ok ? 'verde' : 'rojo');
+}
+
 async function cargarProductosParaVenta() {
   const d = await api('/api/productos', { headers: authHeaders() });
   _productos = d.ok ? d.productos : [];
@@ -1271,7 +1279,7 @@ async function cargarVentas() {
         <td><span class="badge ${v.estado_pago === 'pagado' ? 'b-primary' : 'b-accent'}">${v.estado_pago}</span></td>
         <td><div style="display:flex;gap:6px;">
           <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
-          ${v.estado_pago !== 'pagado' ? `<button class="btn btn-primary btn-sm" onclick="cobrarVenta(${v.id})">Cobrar</button>` : ''}
+          ${['pendiente', 'parcial'].includes(v.estado_pago) ? `<button class="btn btn-primary btn-sm" onclick="cobrarVenta(${v.id})">Cobrar</button>` : ''}
         </div></td>
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="7">Aún no has registrado ventas</td></tr>';
@@ -1675,8 +1683,8 @@ document.addEventListener('click', (e) => {
 // ══════════════════════════════════════════════════════════════
 let _atenciones = [];
 const prioridadLabel = { emergencia: 'Emergencia', urgente: 'Urgente', prioritario: 'Prioritario', normal: 'Normal' };
-const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
-const flujoEstados = ['llegada','triaje','espera','consulta','diagnostico','tratamiento','venta','seguimiento','cerrada'];
+const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', llamado: 'Llamado', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
+const flujoEstados = ['llegada','triaje','espera','llamado','consulta','diagnostico','tratamiento','venta','seguimiento','cerrada'];
 
 async function cargarAtenciones() {
   const d = await api('/api/atenciones', { headers: authHeaders() });

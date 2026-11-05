@@ -1027,22 +1027,28 @@ async function cargarVentas() {
   renderVentas();
 }
 function renderVentas() {
+  const badge = { pagado: 'b-primary', parcial: 'b-accent', pendiente: 'b-accent', anulado: 'b-danger', reembolsado: 'b-danger', borrador: 'b-grey' };
   document.getElementById('tbVentas').innerHTML = _ventas.length
     ? _ventas.map(v => `<tr>
         <td>${fmtFecha(v.created_at)}</td>
         <td>${v.cliente_nombre || '—'}</td>
         <td>${v.paciente_nombre || '—'}</td>
         <td><strong>${fmtMoney(v.total)}</strong></td>
-        <td><span class="badge ${v.estado_pago === 'pagado' ? 'b-primary' : 'b-accent'}">${v.estado_pago}</span></td>
-        <td>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
-            ${v.estado_pago !== 'pagado' ? `<button class="btn btn-primary btn-sm" onclick="registrarPago(${v.id})">Registrar pago</button>` : ''}
-            <button class="btn btn-danger btn-sm" onclick="eliminarVenta(${v.id})">Eliminar</button>
-          </div>
-        </td>
-      </tr>`).join('')
+        <td><span class="badge ${badge[v.estado_pago] || 'b-grey'}">${v.estado_pago}</span></td>
+        <td><div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
+          ${['pendiente', 'parcial'].includes(v.estado_pago) ? `<button class="btn btn-primary btn-sm" onclick="registrarPago(${v.id})">Cobrar saldo</button>` : ''}
+          ${!['anulado', 'reembolsado'].includes(v.estado_pago) ? `<button class="btn btn-danger btn-sm" onclick="anularVenta(${v.id})">Anular</button>` : ''}
+        </div></td></tr>`).join('')
     : '<tr class="empty-row"><td colspan="6">Aún no tienes ventas registradas</td></tr>';
+}
+async function anularVenta(id) {
+  const motivo = (prompt('Motivo de la anulación (obligatorio):') || '').trim();
+  if (!motivo) return;
+  const d = await api(`/api/ventas/${id}/anular`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ motivo }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Venta anulada y stock devuelto', 'verde');
+  cargarVentas();
 }
 async function abrirCrearVenta() {
   await Promise.all([asegurarClientesCargados(), cargarProductosParaVenta()]);
@@ -1124,13 +1130,7 @@ async function guardarVenta() {
   cerrarModal('mVenta');
   cargarVentas();
 }
-async function eliminarVenta(id) {
-  if (!confirm('¿Eliminar esta venta?')) return;
-  const d = await api(`/api/ventas/${id}`, { method: 'DELETE', headers: authHeaders() });
-  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Venta eliminada', 'verde');
-  cargarVentas();
-}
+
 async function registrarPago(id) {
   const d = await api(`/api/ventas/${id}/pago`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({}) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
@@ -1326,8 +1326,8 @@ async function subirFotoPacienteSiHay(pacienteId) {
 // ══════════════════════════════════════════════════════════════
 let _atenciones = [];
 const prioridadLabel = { emergencia: 'Emergencia', urgente: 'Urgente', prioritario: 'Prioritario', normal: 'Normal' };
-const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
-const flujoEstados = ['llegada','triaje','espera','consulta','diagnostico','tratamiento','venta','seguimiento','cerrada'];
+const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', llamado: 'Llamado', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
+const flujoEstados = ['llegada','triaje','espera','llamado','consulta','diagnostico','tratamiento','venta','seguimiento','cerrada'];
 
 async function cargarAtenciones() {
   await asegurarVeterinariosCargados();
@@ -1482,6 +1482,12 @@ async function cargarReportes() {
   document.getElementById('tbRepProductos').innerHTML = (d.topProductos || []).length
     ? d.topProductos.map(p => `<tr><td>${p.nombre}</td><td>${p.cantidad}</td><td>${fmtMoney(p.total)}</td></tr>`).join('')
     : '<tr class="empty-row"><td colspan="3">Sin datos</td></tr>';
+  document.getElementById('tbRepTipo').innerHTML = (d.porTipo || []).length
+  ? d.porTipo.map(t => `<tr><td>${t.tipo === 'consulta' ? 'Ventas de consulta' : 'Ventas individuales'}</td><td>${t.cantidad}</td><td>${fmtMoney(t.total)}</td></tr>`).join('')
+  : '<tr class="empty-row"><td colspan="3">Sin datos</td></tr>';
+    document.getElementById('tbRepProductos').innerHTML = (d.topProductos || []).length
+    ? d.topProductos.map(p => `<tr><td>${p.nombre}</td><td>${p.tipo || '—'}</td><td>${p.cantidad}</td><td>${fmtMoney(p.total)}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="4">Sin datos</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════════

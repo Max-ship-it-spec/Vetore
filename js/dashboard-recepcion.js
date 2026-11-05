@@ -9,7 +9,7 @@ if (user) {
 // ══════════════════════════════════════════════════════════════
 // NAVEGACIÓN
 // ══════════════════════════════════════════════════════════════
-const titles = { inicio: 'Dashboard', atencion: 'Sala de espera', agenda: 'Agenda', clientes: 'Clientes', pacientes: 'Pacientes', ventas: 'Ventas / Cobros' };
+const titles = { inicio: 'Dashboard', atencion: 'Sala de espera', agenda: 'Agenda', clientes: 'Clientes', pacientes: 'Pacientes', ventas: 'Ventas / Cobros', inventario: 'Inventario' };
 document.querySelectorAll('.nav-item').forEach(btn => btn.addEventListener('click', () => ir(btn.dataset.sec)));
 
 function ir(sec) {
@@ -26,6 +26,7 @@ function ir(sec) {
   if (sec === 'clientes') cargarClientes();
   if (sec === 'pacientes') cargarPacientes();
   if (sec === 'ventas') cargarVentas();
+  if (sec === 'inventario') cargarInventario();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -46,27 +47,17 @@ function poblarSelectVeterinarios(selectId, valorSel) {
 // DASHBOARD (inicio)
 // ══════════════════════════════════════════════════════════════
 async function cargarInicio() {
-  const [citasD, atD, ventasD] = await Promise.all([
+  const [citasD, atD, cajaD, pendD] = await Promise.all([
     api('/api/citas?hoy=1', { headers: authHeaders() }),
     api('/api/atenciones', { headers: authHeaders() }),
-    api('/api/ventas', { headers: authHeaders() }),
+    api('/api/caja', { headers: authHeaders() }),
+    api('/api/citas?pendientes=1', { headers: authHeaders() }),
   ]);
   const citasHoy = citasD.ok ? citasD.citas : [];
-  const atenciones = atD.ok ? atD.atenciones : [];
-  const ventas = ventasD.ok ? ventasD.ventas : [];
-
-  const pendD = await api('/api/citas?pendientes=1', { headers: authHeaders() });
-  const pendientes = pendD.ok ? pendD.citas : [];
-
-  const hoyStr = new Date().toISOString().slice(0, 10);
-  const ventasHoy = ventas.filter(v => String(v.created_at).slice(0, 10) === hoyStr && v.estado_pago === 'pagado');
-  const totalHoy = ventasHoy.reduce((a, v) => a + Number(v.total || 0), 0);
-
   document.getElementById('st-citasHoy').textContent = citasHoy.length;
-  document.getElementById('st-pendientes').textContent = pendientes.length;
-  document.getElementById('st-llegadas').textContent = atenciones.length;
-  document.getElementById('st-cobrosHoy').textContent = fmtMoney(totalHoy);
-
+  document.getElementById('st-pendientes').textContent = pendD.ok ? pendD.citas.length : 0;
+  document.getElementById('st-llegadas').textContent = atD.ok ? atD.atenciones.length : 0;
+  document.getElementById('st-cobrosHoy').textContent = fmtMoney(cajaD.ok ? cajaD.total : 0);
   document.getElementById('inicioAgendaDia').innerHTML = citasHoy.length
     ? citasHoy.map(c => `
       <div class="inicio-list-item">
@@ -291,24 +282,41 @@ async function subirFotoPacienteSiHay(pacienteId) {
 // ══════════════════════════════════════════════════════════════
 let _citas = [];
 const estadoBadge = { pendiente: 'b-grey', confirmada: 'b-primary', en_espera: 'b-accent', atendiendo: 'b-accent', atendida: 'b-primary', cancelada: 'b-danger', no_asistio: 'b-danger' };
+function telefonoWhatsApp(raw) {
+  let n = String(raw || '').replace(/\D/g, '');
+  if (!n) return '';
+  if (n.startsWith('593')) return n;
+  if (n.startsWith('0')) n = n.slice(1);
+  return '593' + n;
+}
+function whatsappCita(id) {
+  const c = _citas.find(x => x.id === id); if (!c) return;
+  const tel = telefonoWhatsApp(c.cliente_telefono);
+  if (!tel) { toast('Este cliente no tiene teléfono registrado', 'rojo'); return; }
+  const clinica = (user && user.nombre_clinica) || 'la clínica veterinaria';
+  const m = c.paciente_nombre || 'su mascota', f = fmtFecha(c.fecha), h = c.hora ? c.hora.slice(0, 5) : '';
+  const cuando = h ? `el ${f} a las ${h}` : `el ${f}`;
+  const msg = {
+    pendiente: `Hola ${c.cliente_nombre || ''} 👋, le recordamos la cita de *${m}* ${cuando} en ${clinica}. ¿Nos confirma su asistencia? 🐾`,
+    confirmada: `Hola ${c.cliente_nombre || ''} 👋, su cita para *${m}* está confirmada ${cuando} en ${clinica}. ¡Los esperamos! 🐾`,
+    cancelada: `Hola ${c.cliente_nombre || ''}, la cita de *${m}* (${cuando}) fue cancelada. Si desea reagendar, escríbanos. 🐾`,
+    no_asistio: `Hola ${c.cliente_nombre || ''}, notamos que no pudo asistir a la cita de *${m}* (${cuando}). ¿Desea reagendarla? 🐾`,
+  }[c.estado] || `Hola ${c.cliente_nombre || ''}, le escribimos de ${clinica} sobre la cita de *${m}* ${cuando}. 🐾`;
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
 async function cargarCitas() {
   await asegurarVeterinariosCargados();
   const d = await api('/api/citas', { headers: authHeaders() });
   _citas = d.ok ? d.citas : [];
   document.getElementById('tbCitas').innerHTML = _citas.length
     ? _citas.map(c => `<tr>
-        <td>${fmtFecha(c.fecha)}</td>
-        <td>${c.hora ? c.hora.slice(0, 5) : '—'}</td>
-        <td>${c.cliente_nombre || '—'}</td>
-        <td>${c.paciente_nombre || '—'}</td>
-        <td>${c.veterinario_nombre || '—'}</td>
-        <td>${c.motivo || '—'}</td>
-        <td>
-          <select onchange="cambiarEstadoCita(${c.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;">
-            ${['pendiente', 'confirmada', 'en_espera', 'atendiendo', 'atendida', 'no_asistio', 'cancelada'].map(e => `<option value="${e}" ${e === c.estado ? 'selected' : ''}>${e.replace('_',' ')}</option>`).join('')}
-          </select>
-        </td>
-        <td><button class="btn btn-danger btn-sm" onclick="eliminarCita(${c.id})">Eliminar</button></td>
+        <td>${fmtFecha(c.fecha)}</td><td>${c.hora ? c.hora.slice(0, 5) : '—'}</td>
+        <td>${c.cliente_nombre || '—'}</td><td>${c.paciente_nombre || '—'}</td>
+        <td>${c.veterinario_nombre || '—'}</td><td>${c.motivo || '—'}</td>
+        <td><select onchange="cambiarEstadoCita(${c.id}, this.value)" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;">
+          ${['pendiente', 'confirmada', 'en_espera', 'atendiendo', 'atendida', 'no_asistio', 'cancelada'].map(e => `<option value="${e}" ${e === c.estado ? 'selected' : ''}>${e.replace('_', ' ')}</option>`).join('')}
+        </select></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="whatsappCita(${c.id})" style="color:#25D366;font-weight:700;">WhatsApp</button></td>
       </tr>`).join('')
     : '<tr class="empty-row"><td colspan="8">No hay citas agendadas</td></tr>';
 }
@@ -361,35 +369,19 @@ async function eliminarCita(id) {
 // ══════════════════════════════════════════════════════════════
 // VENTAS / COBROS
 // ══════════════════════════════════════════════════════════════
+let _rvFiltro = 'todas';
 let _ventas = [];
 let _itemsVenta = [];
 let _productos = [];
-async function cargarVentas() {
-  const d = await api('/api/ventas', { headers: authHeaders() });
-  _ventas = d.ok ? d.ventas : [];
-  document.getElementById('tbVentas').innerHTML = _ventas.length
-    ? _ventas.map(v => `<tr>
-        <td>${fmtFecha(v.created_at)}</td>
-        <td>${v.cliente_nombre || '—'}</td>
-        <td>${v.paciente_nombre || '—'}</td>
-        <td><strong>${fmtMoney(v.total)}</strong></td>
-        <td><span class="badge ${v.estado_pago === 'pagado' ? 'b-primary' : 'b-accent'}">${v.estado_pago}</span></td>
-        <td>
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
-            ${v.estado_pago !== 'pagado' ? `<button class="btn btn-primary btn-sm" onclick="registrarPago(${v.id})">Registrar pago</button>` : ''}
-            <button class="btn btn-danger btn-sm" onclick="eliminarVenta(${v.id})">Eliminar</button>
-          </div>
-        </td>
-      </tr>`).join('')
-    : '<tr class="empty-row"><td colspan="6">Aún no hay ventas registradas</td></tr>';
-}
+
 async function abrirCrearVenta() {
   await Promise.all([asegurarClientesCargados(), cargarProductosParaVenta()]);
   poblarSelectClientes('ve_cliente_id');
   document.getElementById('ve_paciente_id').innerHTML = '<option value="">—</option>';
   document.getElementById('ve_descuento').value = 0;
   document.getElementById('ve_estado_pago').value = 'pagado';
+  document.getElementById('ve_abono').value = '';
+  document.getElementById('ve_abono_w').style.display = 'none';
   document.getElementById('ve_item_nombre').value = '';
   document.getElementById('ve_item_precio').value = '';
   _itemsVenta = [];
@@ -400,15 +392,14 @@ async function cargarProductosParaVenta() {
   const d = await api('/api/productos', { headers: authHeaders() });
   _productos = d.ok ? d.productos : [];
   const sel = document.getElementById('ve_producto_select');
-  sel.innerHTML = _productos.map(p => `<option value="${p.id}">${p.nombre} — ${fmtMoney(p.precio_venta)} (stock: ${p.stock})</option>`).join('')
+  sel.innerHTML = _productos.map(p => `<option value="${p.id}">${vcEsc(p.nombre)} — ${fmtMoney(p.precio_venta)} (stock: ${p.stock})</option>`).join('')
     || '<option value="">Sin productos en inventario</option>';
 }
 function agregarItemDesdeInventario() {
-  const sel = document.getElementById('ve_producto_select');
-  const id = sel.value;
-  const p = _productos.find(x => String(x.id) === String(id));
+  const p = _productos.find(x => String(x.id) === String(document.getElementById('ve_producto_select').value));
   if (!p) { toast('No hay productos en inventario'); return; }
-  _itemsVenta.push({ producto_id: p.id, nombre: p.nombre, precio: Number(p.precio_venta), cantidad: 1 });
+  const ya = _itemsVenta.find(i => i.producto_id === p.id);
+  if (ya) ya.cantidad++; else _itemsVenta.push({ producto_id: p.id, nombre: p.nombre, precio: Number(p.precio_venta), cantidad: 1 });
   renderItemsVenta();
 }
 function agregarItemLibre() {
@@ -420,20 +411,13 @@ function agregarItemLibre() {
   document.getElementById('ve_item_precio').value = '';
   renderItemsVenta();
 }
-function cambiarCantidadItem(i, delta) {
-  _itemsVenta[i].cantidad = Math.max(1, (_itemsVenta[i].cantidad || 1) + delta);
-  renderItemsVenta();
-}
-function quitarItemVenta(i) {
-  _itemsVenta.splice(i, 1);
-  renderItemsVenta();
-}
+function cambiarCantidadItem(i, delta) { _itemsVenta[i].cantidad = Math.max(1, (_itemsVenta[i].cantidad || 1) + delta); renderItemsVenta(); }
+function quitarItemVenta(i) { _itemsVenta.splice(i, 1); renderItemsVenta(); }
 function renderItemsVenta() {
-  const list = document.getElementById('ve_items_list');
-  list.innerHTML = _itemsVenta.length
+  document.getElementById('ve_items_list').innerHTML = _itemsVenta.length
     ? _itemsVenta.map((it, i) => `
       <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
-        <div style="flex:1;">${it.nombre}</div>
+        <div style="flex:1;">${vcEsc(it.nombre)}</div>
         <div style="display:flex;align-items:center;gap:6px;">
           <button type="button" class="btn btn-ghost btn-sm" onclick="cambiarCantidadItem(${i},-1)">−</button>
           <span>${it.cantidad}</span>
@@ -445,18 +429,154 @@ function renderItemsVenta() {
     : '<p style="color:var(--ink-soft);font-size:13px;">Aún no has agregado productos o servicios</p>';
   const subtotal = _itemsVenta.reduce((a, it) => a + it.precio * it.cantidad, 0);
   const descuento = Number(document.getElementById('ve_descuento').value || 0);
-  const total = Math.max(subtotal - descuento, 0);
-  document.getElementById('ve_total_txt').textContent = fmtMoney(total);
+  document.getElementById('ve_total_txt').textContent = fmtMoney(Math.max(subtotal - descuento, 0));
 }
+
+// ── Inventario (solo consulta) ──
+const estStock = p => Number(p.stock) <= 0 ? 'agotado' : Number(p.stock) <= Number(p.stock_minimo) ? 'bajo' : 'ok';
+async function cargarInventario() {
+  const d = await api('/api/productos', { headers: authHeaders() });
+  _productos = d.ok ? d.productos : [];
+  renderInventario();
+}
+function renderInventario() {
+  const q = document.getElementById('inv_buscar').value.trim().toLowerCase(), fs = document.getElementById('inv_f_stock').value;
+  const lista = _productos.filter(p => (!q || [p.nombre, p.marca, p.codigo_barras].some(x => String(x || '').toLowerCase().includes(q))) && (!fs || estStock(p) === fs));
+  document.getElementById('tbInventario').innerHTML = lista.length ? lista.map(p => {
+    const e = estStock(p);
+    return `<tr><td><strong>${vcEsc(p.nombre)}</strong></td><td>${vcEsc(p.marca) || '—'}</td><td>${vcEsc(p.linea) || '—'}</td><td>${fmtMoney(p.precio_venta)}</td>
+      <td><span class="badge ${e === 'ok' ? 'b-primary' : e === 'bajo' ? 'b-accent' : 'b-danger'}">${p.stock}</span></td>
+      <td>${!p.activo ? '<span class="badge b-grey">Inactivo</span>' : e === 'agotado' ? '<span class="badge b-danger">Agotado</span>' : e === 'bajo' ? '<span class="badge b-accent">Stock bajo</span>' : '<span class="badge b-primary">Disponible</span>'}</td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="6">Sin productos</td></tr>';
+}
+
+const RV_PEND = v => ['pendiente', 'parcial'].includes(v.estado_pago);
+const RV_FILTROS = {
+  todas: () => true,
+  consulta: v => v.tipo === 'consulta',
+  individual: v => v.tipo === 'individual',
+  pendientes: RV_PEND,
+  cobrar_consulta: v => v.tipo === 'consulta' && RV_PEND(v),
+};
+const estadoVentaBadge = { pagado: 'b-primary', parcial: 'b-accent', pendiente: 'b-accent', anulado: 'b-danger', reembolsado: 'b-danger', borrador: 'b-grey' };
+const numVenta = v => v.numero ? 'V-' + String(v.numero).padStart(4, '0') : '#' + v.id;
+
+async function cargarVentas() {
+  const d = await api('/api/ventas', { headers: authHeaders() });
+  _ventas = d.ok ? d.ventas : [];
+  renderVentas();
+}
+function rvFiltro(f) {
+  _rvFiltro = f;
+  ['todas', 'consulta', 'individual', 'pendientes'].forEach(x => {
+    const b = document.getElementById('rv_f_' + x);
+    if (b) b.className = 'ficha-tab-btn' + (x === f ? ' active' : '');
+  });
+  renderVentas();
+}
+function renderVentas() {
+  const pend = _ventas.filter(RV_PEND).length;
+  document.getElementById('rv_f_pendientes').textContent = 'Pendientes de cobro' + (pend ? ` (${pend})` : '');
+  document.getElementById('rv_badge_cons').textContent = `${_ventas.filter(RV_FILTROS.cobrar_consulta).length} por cobrar`;
+  const lista = _ventas.filter(RV_FILTROS[_rvFiltro] || RV_FILTROS.todas);
+  document.getElementById('tbVentas').innerHTML = lista.length ? lista.map(v => {
+    const saldo = Math.max(0, Number(v.total) - Number(v.pagado || 0));
+    const cerrada = ['anulado', 'reembolsado'].includes(v.estado_pago);
+    return `<tr>
+      <td>${numVenta(v)}</td><td>${fmtFecha(v.created_at)}</td>
+      <td><span class="badge ${v.tipo === 'consulta' ? 'b-primary' : 'b-grey'}">${v.tipo === 'consulta' ? 'Consulta' : 'Individual'}</span></td>
+      <td>${vcEsc(v.cliente_nombre) || '—'}</td><td>${vcEsc(v.paciente_nombre) || '—'}</td>
+      <td><strong>${fmtMoney(v.total)}</strong></td><td>${fmtMoney(v.pagado)}</td>
+      <td>${cerrada ? '—' : fmtMoney(saldo)}</td>
+      <td><span class="badge ${estadoVentaBadge[v.estado_pago] || 'b-grey'}">${v.estado_pago}</span></td>
+      <td><div style="display:flex;gap:6px;">
+        <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
+        <button class="btn btn-ghost btn-sm" title="Imprimir" onclick="vcImprimirVenta(_ventas.find(x=>x.id===${v.id}))">🖨</button>
+        ${RV_PEND(v) ? `<button class="btn btn-primary btn-sm" onclick="abrirPago(${v.id})">Cobrar</button>` : ''}
+        ${!cerrada && Number(v.pagado) === 0 ? `<button class="btn btn-danger btn-sm" onclick="anularVenta(${v.id})">Anular</button>` : ''}
+      </div></td></tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="10">Sin ventas en esta vista</td></tr>';
+}
+async function anularVenta(id) {
+  const motivo = (prompt('Motivo de la anulación (obligatorio):') || '').trim();
+  if (!motivo) return;
+  const d = await api(`/api/ventas/${id}/anular`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ motivo }) });
+  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+  toast('Venta anulada y stock devuelto', 'verde');
+  cargarVentas();
+}
+// ── Cobro / abono ──
+function abrirPago(id) {
+  const v = _ventas.find(x => x.id === id); if (!v) return;
+  const saldo = Math.max(0, Number(v.total) - Number(v.pagado || 0));
+  document.getElementById('pg_id').value = id;
+  document.getElementById('pg_sub').textContent = `${numVenta(v)} · ${v.cliente_nombre || 'Sin cliente'}${v.paciente_nombre ? ' · ' + v.paciente_nombre : ''}`;
+  document.getElementById('pg_saldo').textContent = fmtMoney(saldo);
+  document.getElementById('pg_monto').value = saldo.toFixed(2);
+  document.getElementById('pg_metodo').value = 'efectivo';
+  ['pg_recibido', 'pg_ref', 'pg_comp'].forEach(i => document.getElementById(i).value = '');
+  pgMetodo();
+  abrirModal('mPago');
+}
+function pgMetodo() {
+  const m = document.getElementById('pg_metodo').value;
+  document.getElementById('pg_ef_w').style.display = m === 'efectivo' ? '' : 'none';
+  document.getElementById('pg_tr_w').style.display = m === 'transferencia' ? '' : 'none';
+  document.getElementById('pg_tj_w').style.display = m === 'tarjeta' ? '' : 'none';
+  pgCambio();
+}
+function pgCambio() {
+  const monto = Number(document.getElementById('pg_monto').value) || 0, r = Number(document.getElementById('pg_recibido').value) || 0;
+  const c = document.getElementById('pg_cambio');
+  c.style.color = r < monto ? '#c0392b' : '#0b6b3f';
+  c.textContent = r ? (r >= monto ? 'Cambio: ' + fmtMoney(r - monto) : 'Falta: ' + fmtMoney(monto - r)) : '';
+}
+let _pagando = false;
+async function pgConfirmar() {
+  if (_pagando) return;
+  const id = document.getElementById('pg_id').value;
+  const metodo = document.getElementById('pg_metodo').value;
+  const monto = Number(document.getElementById('pg_monto').value) || 0;
+  const recibido = document.getElementById('pg_recibido').value;
+  const ref = document.getElementById('pg_ref').value.trim();
+  const file = document.getElementById('pg_comp').files[0] || null;
+  if (monto <= 0) { toast('Ingresa un monto válido', 'rojo'); return; }
+  if (metodo === 'efectivo' && recibido && Number(recibido) < monto) { toast('El dinero recibido es menor al monto', 'rojo'); return; }
+  if (metodo === 'transferencia' && !ref && !file) { toast('Ingresa la referencia o adjunta el comprobante', 'rojo'); return; }
+  _pagando = true;
+  const btn = document.getElementById('pg_btn'); btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    const d = await api(`/api/ventas/${id}/pagos`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({
+      monto, metodo, referencia: ref, con_comprobante: !!file, recibido: recibido || null,
+      tipo_tarjeta: metodo === 'tarjeta' ? document.getElementById('pg_tj').value : '' }) });
+    if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
+    if (file) {
+      const fd = new FormData(); fd.append('comprobante', file);
+      await fetch(API + `/api/ventas/${id}/comprobante`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: fd });
+    }
+    toast(d.estado === 'pagado' ? 'Venta pagada' : `Abono registrado. Saldo: ${fmtMoney(d.saldo)}`, 'verde');
+    cerrarModal('mPago');
+    await cargarVentas();
+    if (d.estado === 'pagado' && confirm('¿Imprimir comprobante?')) vcImprimirVenta(_ventas.find(x => String(x.id) === String(id)));
+  } finally { _pagando = false; btn.disabled = false; btn.textContent = 'Confirmar pago'; }
+}
+
+
 async function guardarVenta() {
   if (!_itemsVenta.length) { toast('Agrega al menos un producto o servicio', 'rojo'); return; }
+
+  const ep = document.getElementById('ve_estado_pago').value;
+  const abono = ep === 'parcial' ? Number(document.getElementById('ve_abono').value) || 0 : 0;
+  if (ep === 'parcial' && abono <= 0) { toast('Ingresa el abono recibido', 'rojo'); return; }
+
   const body = {
     cliente_id: document.getElementById('ve_cliente_id').value || null,
     paciente_id: document.getElementById('ve_paciente_id').value || null,
     items: _itemsVenta,
     descuento: document.getElementById('ve_descuento').value || 0,
     metodo_pago: document.getElementById('ve_metodo').value,
-    estado_pago: document.getElementById('ve_estado_pago').value,
+    estado_pago: ep === 'parcial' ? 'pendiente' : ep,
+    abono,
   };
   const d = await api('/api/ventas', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
   if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
@@ -464,35 +584,21 @@ async function guardarVenta() {
   cerrarModal('mVenta');
   cargarVentas();
 }
-async function eliminarVenta(id) {
-  if (!confirm('¿Eliminar esta venta?')) return;
-  const d = await api(`/api/ventas/${id}`, { method: 'DELETE', headers: authHeaders() });
-  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Venta eliminada', 'verde');
-  cargarVentas();
-}
-async function registrarPago(id) {
-  const d = await api(`/api/ventas/${id}/pago`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({}) });
-  if (!d.ok) { toast(d.error || 'Error', 'rojo'); return; }
-  toast('Pago registrado', 'verde');
-  cargarVentas();
-}
+
 function verComprobante(id) {
   const v = _ventas.find(x => x.id === id); if (!v) return;
-  let items = [];
-  try { items = typeof v.items_json === 'string' ? JSON.parse(v.items_json) : (v.items_json || []); } catch (e) { items = []; }
+  let items = []; try { items = typeof v.items_json === 'string' ? JSON.parse(v.items_json) : (v.items_json || []); } catch (e) {}
+  const saldo = Math.max(0, Number(v.total) - Number(v.pagado || 0));
+  const fila = (l, x, b) => `<div style="display:flex;justify-content:space-between;font-size:13.5px;${b ? 'font-weight:800;font-size:16px;margin-top:6px;' : ''}"><span>${l}</span><span>${x}</span></div>`;
   document.getElementById('cp_contenido').innerHTML = `
-    <p class="modal-sub">${fmtFecha(v.created_at)} — ${v.cliente_nombre || 'Sin cliente'}${v.paciente_nombre ? ' · ' + v.paciente_nombre : ''}</p>
-    <div style="margin:14px 0;">
-      ${items.map(it => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
-        <span>${it.nombre} ${it.cantidad > 1 ? '× ' + it.cantidad : ''}</span><span>${fmtMoney(it.precio * (it.cantidad || 1))}</span>
-      </div>`).join('')}
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>Subtotal</span><span>${fmtMoney(v.subtotal)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>Descuento</span><span>-${fmtMoney(v.descuento)}</span></div>
-    <div style="display:flex;justify-content:space-between;font-weight:800;font-size:16px;margin-top:6px;"><span>Total</span><span>${fmtMoney(v.total)}</span></div>
-    <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">Método: ${v.metodo_pago} — Estado: ${v.estado_pago}</p>
-  `;
+    <p class="modal-sub">${numVenta(v)} · ${fmtFecha(v.created_at)} — ${vcEsc(v.cliente_nombre || 'Sin cliente')}${v.paciente_nombre ? ' · ' + vcEsc(v.paciente_nombre) : ''}</p>
+    <div style="margin:14px 0;">${items.map(it => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+      <span>${vcEsc(it.nombre)} ${it.cantidad > 1 ? '× ' + it.cantidad : ''}</span><span>${fmtMoney(it.precio * (it.cantidad || 1))}</span></div>`).join('')}</div>
+    ${fila('Subtotal', fmtMoney(v.subtotal))}${fila('Descuento', '-' + fmtMoney(v.descuento))}
+    ${Number(v.impuesto) ? fila('IVA', fmtMoney(v.impuesto)) : ''}${fila('Total', fmtMoney(v.total), true)}
+    ${fila('Pagado', fmtMoney(v.pagado))}${saldo > 0.001 && !['anulado', 'reembolsado'].includes(v.estado_pago) ? fila('Saldo', fmtMoney(saldo)) : ''}
+    <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">Estado: ${vcEsc(v.estado_pago)}${v.usuario_nombre ? ' · Registró: ' + vcEsc(v.usuario_nombre) : ''}${v.motivo_anulacion ? '<br>Anulación: ' + vcEsc(v.motivo_anulacion) : ''}</p>
+    <button class="btn btn-ghost btn-sm" onclick="vcImprimirVenta(_ventas.find(x=>x.id===${v.id}))">🖨 Imprimir</button>`;
   abrirModal('mComprobante');
 }
 
@@ -531,6 +637,9 @@ function fpNuevaVenta() {
     document.getElementById('ve_cliente_id').value = _fpPacienteActivo.cliente_id;
     poblarPacientesDeCliente('ve_paciente_id', _fpPacienteActivo.cliente_id).then(() => {
       document.getElementById('ve_paciente_id').value = _fpPacienteActivo.id;
+      document.getElementById('ve_abono').value = '';
+      document.getElementById('ve_abono_w').style.display = 'none';
+      document.getElementById('ve_abono').value=''; document.getElementById('ve_abono_w').style.display='none';
     });
   });
 }
@@ -574,8 +683,8 @@ document.addEventListener('click', (e) => {
 // ══════════════════════════════════════════════════════════════
 let _atenciones = [];
 const prioridadLabel = { emergencia: 'Emergencia', urgente: 'Urgente', prioritario: 'Prioritario', normal: 'Normal' };
-const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
-// Recepción no puede avanzar a etapas clínicas (el backend también lo bloquea)
+const estadoAtencionLabel = { llegada: 'Llegada', triaje: 'Triaje', espera: 'En espera', llamado: 'Llamado', consulta: 'Consulta', diagnostico: 'Diagnóstico', tratamiento: 'Tratamiento', venta: 'Venta/Pago', seguimiento: 'Seguimiento', cerrada: 'Cerrada' };
+// flujoEstadosRecepcion se queda igual:
 const flujoEstadosRecepcion = ['llegada','triaje','espera'];
 
 async function cargarAtenciones() {
@@ -633,10 +742,17 @@ async function guardarAtencion() {
   const cliente_id = document.getElementById('at_cliente_id').value;
   const paciente_id = document.getElementById('at_paciente_id').value;
   if (!cliente_id || !paciente_id) { toast('Selecciona cliente y mascota', 'rojo'); return; }
+  const origen = document.getElementById('at_origen').value;
+  let cita_id = null, vetCita = null;
+  if (origen === 'con_cita') {
+    const c = await api('/api/citas?hoy=1', { headers: authHeaders() });
+    const cita = (c.ok ? c.citas : []).find(x => String(x.paciente_id) === String(paciente_id) && ['pendiente', 'confirmada'].includes(x.estado));
+    if (!cita) { toast('Esa mascota no tiene cita pendiente hoy. Usa "Sin cita" si llegó sin agendar', 'rojo'); return; }
+    cita_id = cita.id; vetCita = cita.veterinario_id;
+  }
   const body = {
-    cliente_id, paciente_id,
-    veterinario_id: document.getElementById('at_veterinario_id').value || null,
-    origen: document.getElementById('at_origen').value,
+    cliente_id, paciente_id, cita_id, origen,
+    veterinario_id: document.getElementById('at_veterinario_id').value || vetCita || null,
     prioridad: document.getElementById('at_prioridad').value,
   };
   const d = await api('/api/atenciones', { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
@@ -645,7 +761,6 @@ async function guardarAtencion() {
   cerrarModal('mAtencion');
   cargarAtenciones();
 }
-
 // ══════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════
