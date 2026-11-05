@@ -1,6 +1,26 @@
 const user = requireRole('veterinario');
 document.getElementById('logoBox').innerHTML = logoSVG() + '<span class="vc-logo-text">Vet<span>core</span></span>';
-
+const _svg = p => `<svg class="ico" viewBox="0 0 24 24">${p}</svg>`;
+const ICON_PAW  = _svg('<circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"/>');
+const ICON_BELL = _svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>');
+const ICON_ALERT = _svg('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>');
+const ICON_CLIP  = _svg('<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>');
+const ICON_FLASK = _svg('<path d="M10 2v7.5L4.5 19a2 2 0 0 0 1.8 3h11.4a2 2 0 0 0 1.8-3L14 9.5V2"/><path d="M8.5 2h7M7 16h10"/>');
+const ICON_PULSE = _svg('<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>');
+const ICON_CAL   = _svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>');
+const ICON_RECEIPT = _svg('<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8H8M16 12H8M13 16H8"/>');
+const ICON_HOSP  = _svg('<path d="M3 21V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M2 21h20M12 9v6M9 12h6"/>');
+const ICON_PIN   = _svg('<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>');
+const ICON_CLOCK = _svg('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>');
+const ICON_FILE  = _svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>');
+const ICON_DL    = _svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>');
+const ICON_EYE   = _svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>');
+const ICON_SAVE  = _svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/>');
+const ICON_CALC  = _svg('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h4"/>');
+const ICON_BOX   = _svg('<path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="m3 8 9 5 9-5M12 13v8"/>');
+const ICON_CHECK = _svg('<path d="M20 6 9 17l-5-5"/>');
+// Para ventanas de impresión (no heredan tu CSS)
+const PAW_PRINT = ICON_PAW.replace('class="ico"', 'width="26" height="26" style="fill:none;stroke:#0f6b4f;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"');
 if (user) {
   document.getElementById('userName').textContent = user.nombre || 'Veterinario';
   document.getElementById('avatarLetter').textContent = iniciales(user.nombre || 'V');
@@ -34,7 +54,13 @@ function ir(sec) {
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD (inicio)
 // ══════════════════════════════════════════════════════════════
+const EST_ESPERA   = ['llegada', 'triaje', 'espera', 'llamado'];
+const EST_CONSULTA = ['consulta', 'diagnostico', 'tratamiento'];
+
 async function cargarInicio() {
+  const nom = String((user && user.nombre) || '').trim();
+  document.getElementById('dashNombre').textContent = (nom && isNaN(nom.split(' ')[0])) ? nom : 'Doctor';
+
   const [citasD, atD] = await Promise.all([
     api('/api/citas?hoy=1', { headers: authHeaders() }),
     api('/api/atenciones', { headers: authHeaders() }),
@@ -42,28 +68,60 @@ async function cargarInicio() {
   const citasHoy = citasD.ok ? citasD.citas : [];
   const atenciones = atD.ok ? atD.atenciones : [];
 
+  const enConsulta = atenciones.filter(a => EST_CONSULTA.includes(a.estado));
+  const enEspera = atenciones.filter(a => EST_ESPERA.includes(a.estado));
+  const activas = [...enConsulta, ...enEspera];
+  const seguimientos = atenciones.filter(a => a.estado === 'seguimiento');
+  const alertas = activas.filter(a => ['urgente', 'emergencia'].includes(a.prioridad));
+  const porConfirmar = citasHoy.filter(c => c.estado === 'pendiente');
+
+  document.getElementById('st-pacientesAsignados').textContent = activas.length;
   document.getElementById('st-citasHoy').textContent = citasHoy.length;
-  document.getElementById('st-pacientesAsignados').textContent = atenciones.length;
-  document.getElementById('st-alertas').textContent = atenciones.filter(a => ['urgente','emergencia'].includes(a.prioridad)).length;
+  document.getElementById('st-alertas').textContent = alertas.length;
+  document.getElementById('st-seguimientos').textContent = seguimientos.length;
 
-  document.getElementById('inicioAgendaDia').innerHTML = citasHoy.length
-    ? citasHoy.map(c => `
-      <div class="inicio-list-item">
-        <span class="inicio-hora">${c.hora ? c.hora.slice(0,5) : '—'}</span>
-        <span style="flex:1;">${c.paciente_nombre || '—'} — ${c.motivo || 'Consulta'}</span>
-        <span class="badge ${estadoBadge[c.estado] || 'b-grey'}">${(c.estado||'').replace('_',' ')}</span>
+  // Pacientes en atención (consulta primero, luego espera)
+  document.getElementById('inicioEnAtencion').innerHTML = activas.length
+    ? activas.slice(0, 3).map(a => `
+      <div class="pa-item">
+        <div class="pa-av">${a.foto_url ? `<img src="${a.foto_url}" alt="">` : ICON_PAW}</div>
+        <div class="pa-info">
+          <div class="pa-name">${hE(a.paciente_nombre)}</div>
+          <div class="pa-sub">${hE(a.cliente_nombre)}</div>
+          <span class="badge ${EST_CONSULTA.includes(a.estado) ? 'b-primary' : 'b-accent'}" style="margin-top:6px;">${estadoAtencionLabel[a.estado] || a.estado}</span>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="abrirFichaPaciente(${a.paciente_id})">Ver ficha</button>
       </div>`).join('')
-    : '<p style="color:var(--ink-soft);font-size:13px;">No tienes citas asignadas hoy.</p>';
+      + (activas.length > 3 ? `<div class="pa-sub" style="text-align:center;padding-top:8px;">y ${activas.length - 3} más en atención</div>` : '')
+    : '<div class="cola-empty">No tienes pacientes en atención</div>';
 
-  const recientesD = await api('/api/atenciones?recientes=1', { headers: authHeaders() });
-  const recientes = recientesD.ok ? recientesD.atenciones : [];
-  document.getElementById('inicioAtencionesRecientes').innerHTML = recientes.length
-    ? recientes.map(a => `
-      <div class="inicio-list-item">
-        <span style="flex:1;">${a.paciente_nombre} — ${a.cliente_nombre}</span>
-        <span class="badge b-grey">${estadoAtencionLabel[a.estado] || a.estado}</span>
+  // Próximas citas de hoy (pendientes o confirmadas)
+  const prox = citasHoy
+    .filter(c => ['pendiente', 'confirmada'].includes(c.estado))
+    .sort((a, b) => String(a.hora).localeCompare(String(b.hora)))
+    .slice(0, 4);
+  document.getElementById('inicioProximas').innerHTML = prox.length
+    ? prox.map(c => `
+      <div class="prox-item">
+        <div class="prox-ic">${ICON_PAW}</div>
+        <span class="prox-hora">${c.hora ? c.hora.slice(0, 5) : '—'}</span>
+        <div style="flex:1;min-width:0;">
+          <div class="prox-name">${hE(c.paciente_nombre || '—')}</div>
+          <div class="prox-sub">${hE(c.motivo || 'Consulta')}</div>
+        </div>
       </div>`).join('')
-    : '<p style="color:var(--ink-soft);font-size:13px;">Sin atenciones recientes.</p>';
+    : '<div class="cola-empty">No tienes más citas hoy</div>';
+
+  // Recordatorios
+  const pl = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+  const rec = [];
+  if (enEspera.length) rec.push(`${pl(enEspera.length, 'paciente esperando', 'pacientes esperando')} ser atendido${enEspera.length === 1 ? '' : 's'}`);
+  if (alertas.length) rec.push(`${pl(alertas.length, 'atención urgente', 'atenciones urgentes')}`);
+  if (porConfirmar.length) rec.push(`${pl(porConfirmar.length, 'cita', 'citas')} de hoy por confirmar`);
+  if (seguimientos.length) rec.push(`${pl(seguimientos.length, 'paciente requiere', 'pacientes requieren')} control`);
+  document.getElementById('inicioRecordatorios').innerHTML = rec.length
+    ? rec.map(t => `<div class="rec-item"><div class="rec-ic">${ICON_BELL}</div><span>${t}</span></div>`).join('')
+    : '<div class="cola-empty">Todo al día, sin pendientes</div>';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -76,7 +134,7 @@ async function cargarPacientes() {
   document.getElementById('tbPacientes').innerHTML = _pacientes.length
     ? _pacientes.map(p => `<tr>
         <td>
-          ${p.foto_url ? `<img src="${p.foto_url}" class="avatar-mini">` : `<span class="avatar-mini-placeholder">🐾</span>`}
+          ${p.foto_url ? `<img src="${p.foto_url}" class="avatar-mini">` : `<span class="avatar-mini-placeholder">${ICON_PAW}</span>`}
           <a href="#" onclick="abrirFichaPaciente(${p.id});return false;" style="color:var(--primary-dark);font-weight:700;text-decoration:none;">${p.nombre}</a>
         </td>
         <td>${p.cliente_nombre}</td>
@@ -319,7 +377,7 @@ async function abrirNuevaCita(fecha) {
     .forEach(id => document.getElementById(id).value = '');
       _ncFotoFile = null;
   document.getElementById('nc_foto_input').value = '';
-  document.getElementById('nc_foto_box').innerHTML = '<div class="pac-foto-placeholder">🐾</div>';
+  document.getElementById('nc_foto_box').innerHTML = `<div class="pac-foto-placeholder">${ICON_PAW}</div>`;
   document.getElementById('nc_servicio').selectedIndex = 0;
   document.getElementById('nc_fecha').value = typeof fecha === 'string' ? fecha : new Date().toISOString().slice(0, 10);
   document.getElementById('nc_vet').innerHTML = `<option>${user.nombre || 'Yo'} (asignada a mí)</option>`;
@@ -435,8 +493,8 @@ async function cargarHistoriaPaciente() {
           <div class="hx-item-s">Atendió: ${h.atendio || '—'}</div>
         </div>
         <div class="hx-item-b">
-          <button class="hx-b ver" onclick="hxReabrir(${h.id})">👁 Ver / reabrir</button>
-          <button class="hx-b pdf" onclick="hxPdf(${h.id})">⬇ PDF</button>
+          <button class="hx-b ver" onclick="hxReabrir(${h.id})">${ICON_EYE} Ver / reabrir</button>
+          <button class="hx-b pdf" onclick="hxPdf(${h.id})">${ICON_DL} PDF</button>
           <button class="hx-b del" onclick="eliminarConsulta(${h.id})">✕</button>
         </div>
       </div>`;
@@ -507,7 +565,7 @@ async function hxPreciosCargar() {
 
 const HX_VENTA_CARD = `
 <div class="hx-card">
-  <h4>🧾 Venta <span class="hx-tag">Ventas</span></h4>
+  <h4>${ICON_RECEIPT} Venta <span class="hx-tag">Ventas</span></h4>
   <div id="hx_venta_items"></div>
   <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="hxpAbrir()">+ Agregar producto</button>
   <div class="hx-rx-total">Total: <b id="hx_venta_total">$0.00</b></div>
@@ -662,7 +720,7 @@ async function abrirNuevaConsulta(motivo, h) {
         </div>
  
         <div class="hx-card">
-          <h4>❤️ Constantes vitales</h4>
+          <h4>${ICON_PULSE} Constantes vitales</h4>
           <div class="hx-g3">
             ${inp('hx_peso', 'Peso (kg)', 'number')}${inp('hx_temp', 'Temp (°C)', 'number')}${inp('hx_fc', 'F. Card. (lpm)')}
             ${inp('hx_fr', 'F. Resp. (rpm)')}${inp('hx_spo2', 'Sat. O₂ (%)')}${inp('hx_pa', 'Presión art.')}
@@ -675,7 +733,7 @@ async function abrirNuevaConsulta(motivo, h) {
         </div>
  
         <div class="hx-card">
-          <h4>📅 Próxima visita <span class="hx-tag">Agenda</span></h4>
+          <h4>${ICON_CAL} Próxima visita <span class="hx-tag">Agenda</span></h4>
           <div class="hx-g2">
             ${inp('hx_proximo', 'Fecha', 'date')}
             <div class="hx-f"><label>Hora</label><input type="time" id="hx_hora" value="09:00"></div>
@@ -685,7 +743,7 @@ async function abrirNuevaConsulta(motivo, h) {
           <p class="hx-note">Si pones fecha, la cita se agenda automáticamente al guardar.</p>
         </div>
  
-           <button type="button" class="hx-hosp-btn" id="hx_hosp_btn" onclick="abrirHosp()">🏥 Hospitalizar paciente</button>
+           <button type="button" class="hx-hosp-btn" id="hx_hosp_btn" onclick="abrirHosp()">${ICON_HOSP} Hospitalizar paciente</button>
       </div>
  
       <!-- ═════════ DERECHA ═════════ -->
@@ -701,7 +759,7 @@ async function abrirNuevaConsulta(motivo, h) {
           <div id="hx_rx_lista"></div>
           ${ta('hx_trat', 'Plan terapéutico / indicaciones', 'Dieta, cuidados en casa, observaciones...', 3, true)}
           <div class="hx-rx-actions">
-            <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">💾 Guardar receta</button>
+            <button type="button" class="btn btn-ghost" id="hx_rx_save" onclick="hxGuardarReceta(false)">${ICON_SAVE} Guardar receta</button>
             <button type="button" class="btn" id="hx_rx_wa" style="background:#25D366;color:#fff;" onclick="hxGuardarReceta(true)">Guardar y enviar por WhatsApp</button>
           </div>
           <div id="hx_recetas"></div>
@@ -710,7 +768,7 @@ async function abrirNuevaConsulta(motivo, h) {
         ${h ? '' : HX_VENTA_CARD}
 
         <div class="hx-card">
-          <h4>🧪 Laboratorio</h4>
+          <h4>${ICON_FLASK} Laboratorio</h4>
           <div class="hx-drop" id="hx_drop" onclick="hxEl('hx_file').click()">Arrastra PDFs aquí o haz clic para subirlos</div>
           <input type="file" id="hx_file" accept="application/pdf" multiple style="display:none;" onchange="hxAddFiles(this.files);this.value=''">
           <div id="hx_files"></div>
@@ -720,7 +778,7 @@ async function abrirNuevaConsulta(motivo, h) {
  
     <div class="hx-actions">
       <button class="btn btn-ghost" onclick="cargarHistoriaPaciente()">Cancelar</button>
-      <button class="btn btn-ghost" onclick="hxBorrador()">💾 Guardar borrador</button>
+      <button class="btn btn-ghost" onclick="hxBorrador()">${ICON_SAVE} Guardar borrador</button>
       <button class="btn-final" id="hx_btn" onclick="guardarConsulta()">${h ? '✓ Guardar cambios' : '✓ Registrar consulta'}</button>
     </div>`;
  
@@ -759,14 +817,7 @@ async function abrirNuevaConsulta(motivo, h) {
   hxEl('hc_wrap').scrollIntoView({ behavior: 'smooth' });
 }
  
-// ── Hospitalización ─────────────────────────────────────────
-function hxToggleHosp() {
-  _hxHosp = !_hxHosp;
-  hxEl('hx_hosp_panel').style.display = _hxHosp ? '' : 'none';
-  const b = hxEl('hx_hosp_btn');
-  b.classList.toggle('on', _hxHosp);
-  b.textContent = _hxHosp ? '✔ Paciente a hospitalizar (quitar)' : '🏥 Hospitalizar paciente';
-}
+
  
 // ── Receta conectada a inventario ───────────────────────────
 const _norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -832,8 +883,8 @@ function hxAddFiles(list) {
 }
 function hxFilesRender() {
   hxEl('hx_files').innerHTML =
-    _hxExist.map(a => `<div class="hx-file"><a href="${a.url}" target="_blank" rel="noopener">📄 ${a.nombre}</a><button type="button" onclick="hxDelExist(${a.id})" aria-label="Eliminar">×</button></div>`).join('') +
-    _hxPend.map((f, i) => `<div class="hx-file"><span>📄 ${f.name} <small>(${Math.round(f.size / 1024)} KB · se sube al guardar)</small></span><button type="button" onclick="_hxPend.splice(${i},1);hxFilesRender()" aria-label="Quitar">×</button></div>`).join('');
+    _hxExist.map(a => `<div class="hx-file"><a href="${a.url}" target="_blank" rel="noopener">${ICON_FILE}  ${a.nombre}</a><button type="button" onclick="hxDelExist(${a.id})" aria-label="Eliminar">×</button></div>`).join('') +
+    _hxPend.map((f, i) => `<div class="hx-file"><span>${ICON_FILE}  ${f.name} <small>(${Math.round(f.size / 1024)} KB · se sube al guardar)</small></span><button type="button" onclick="_hxPend.splice(${i},1);hxFilesRender()" aria-label="Quitar">×</button></div>`).join('');
 }
 async function hxDelExist(id) {
   if (!confirm('¿Eliminar este PDF?')) return;
@@ -1225,7 +1276,7 @@ function renderProductos() {
             <div class="prod-cell">
               ${p.foto_url
                 ? `<a href="${p.foto_url}" target="_blank" title="Ver foto completa"><img src="${thumb(p.foto_url, 104)}" class="prod-foto" loading="lazy"></a>`
-                : `<span class="prod-foto-ph">📦</span>`}
+                : `<span class="prod-foto-ph">${ICON_BOX}</span>`}
               <span class="prod-nombre">${p.nombre}</span>
             </div>
           </td>
@@ -1509,7 +1560,7 @@ function fpPintarAvatar() {
   const p = _fpPacienteActivo;
   document.getElementById('fp_avatar').innerHTML = p.foto_url
     ? `<img src="${p.foto_url}" style="width:100%;height:100%;object-fit:cover;">`
-    : (p.especie?.toLowerCase().includes('gat') ? '🐱' : '🐶');
+    : ICON_PAW;
 }
 function cambiarTabFicha(tab) {
   document.getElementById('fp_tab_resumen').classList.toggle('active', tab === 'resumen');
@@ -1548,8 +1599,8 @@ function renderFichaResumen() {
       ${it('Microchip', p.microchip)}
       ${it('Tel. tutor', p.cliente_telefono)}
     </div>
-    ${p.alergias ? `<div class="ficha-dr-box"><div class="ficha-dr-label">⚠️ Alergias</div><div class="ficha-dr-txt">${p.alergias}</div></div>` : ''}
-    ${p.observaciones ? `<div class="ficha-dr-box"><div class="ficha-dr-label">📋 Observaciones</div><div class="ficha-dr-txt">${p.observaciones}</div></div>` : ''}
+    ${p.alergias ? `<div class="ficha-dr-box"><div class="ficha-dr-label">${ICON_ALERT} Alergias</div><div class="ficha-dr-txt">${p.alergias}</div></div>` : ''}
+    ${p.observaciones ? `<div class="ficha-dr-box"><div class="ficha-dr-label">${ICON_CLIP} Observaciones</div><div class="ficha-dr-txt">${p.observaciones}</div></div>` : ''}
   `;
 }
 async function fpCambiarFoto(e) {
@@ -1662,7 +1713,7 @@ function buscarGlobal(term) {
     let html = '';
     if (d.pacientes.length) {
       html += '<div class="search-results-group">Pacientes</div>';
-      html += d.pacientes.map(p => `<div class="search-result-item" onclick="cerrarBusqueda();abrirFichaPaciente(${p.id})"><span>🐾 ${p.nombre}</span><span style="color:var(--ink-soft);">${p.cliente_nombre}</span></div>`).join('');
+      html += d.pacientes.map(p => `<div class="search-result-item" onclick="cerrarBusqueda();abrirFichaPaciente(${p.id})"><span class="ico-txt">${ICON_PAW} ${p.nombre}</span><span style="color:var(--ink-soft);">${p.cliente_nombre}</span></div>`).join('');
     }
     if (!html) html = '<div class="search-empty">Sin resultados</div>';
     box.innerHTML = html;
@@ -1766,7 +1817,7 @@ async function abrirHosp() {
   const btn = $('btnHospGuardar'); btn.disabled = false;
   const d = await api(`/api/pacientes/${pid}/hospitalizacion-activa`, { headers: authHeaders() });
   if (d.ok && d.hospitalizacion) {
-    aviso.innerHTML = `⚠️ Este paciente ya tiene una hospitalización activa (<b>${d.hospitalizacion.codigo}</b>).`;
+    aviso.innerHTML = `${ICON_ALERT} Este paciente ya tiene una hospitalización activa (<b>${d.hospitalizacion.codigo}</b>).`;
     aviso.style.display = 'block'; btn.disabled = true;
   }
   $('modalHosp').style.display = 'flex';
@@ -1835,7 +1886,7 @@ function hospRender() {
     const act = h.estado === 'activa';
     return `<div class="hp-card ${act ? hClase(h.estado_inicial) : 'done'}" onclick="abrirHospDetalle(${h.id})">
       <div class="hp-card-top">
-        <div class="hp-av">${h.foto_url ? `<img src="${h.foto_url}" alt="">` : (String(h.especie || '').toLowerCase().includes('gat') ? '🐱' : '🐶')}</div>
+        <div class="hp-av">${h.foto_url ? `<img src="${h.foto_url}" alt="">` : ICON_PAW}</div>
         <div class="hp-card-id">
           <b>${hE(h.paciente_nombre)}</b>
           <span>${hE(h.especie || '')}${h.raza ? ' · ' + hE(h.raza) : ''}</span>
@@ -1845,7 +1896,7 @@ function hospRender() {
       </div>
       <div class="hp-chips">
         ${act ? `<span class="hp-chip ${hClase(h.estado_inicial)}">${hE(h.estado_inicial)}</span>` : `<span class="hp-chip done">Alta · ${hE(h.condicion_alta || '')}</span>`}
-        <span class="hp-chip neutro">📍 ${hE(h.jaula ? h.jaula + ' · ' : '')}${hE(h.area || 'Sin área')}</span>
+        <span class="hp-chip neutro">${ICON_PIN} ${hE(h.jaula ? h.jaula + ' · ' : '')}${hE(h.area || 'Sin área')}</span>
       </div>
       <p class="hp-motivo">${hE(h.motivo)}</p>
       <div class="hp-card-foot">
@@ -1891,14 +1942,14 @@ function hospTab(t) {
   const h = _hospDet.hospitalizacion, act = h.estado === 'activa';
   document.getElementById('hd_head').innerHTML = `
     <div class="hp-dh">
-      <div class="hp-av lg">${h.foto_url ? `<img src="${h.foto_url}" alt="">` : (String(h.especie || '').toLowerCase().includes('gat') ? '🐱' : '🐶')}</div>
+      <div class="hp-av lg">${h.foto_url ? `<img src="${h.foto_url}" alt="">` : ICON_PAW}</div>
       <div style="flex:1;min-width:0;">
         <h2 style="margin:0;">${hE(h.paciente_nombre)} <span class="hp-cod">${hE(h.codigo || '')}</span></h2>
         <p class="modal-sub" style="margin:2px 0 8px;">${hE(h.especie || '')}${h.raza ? ' · ' + hE(h.raza) : ''} — Tutor: ${hE(h.cliente_nombre)}</p>
         <div class="hp-chips">
           ${act ? `<span class="hp-chip ${hClase(h.estado_inicial)}">${hE(h.estado_inicial)}</span>` : `<span class="hp-chip done">Alta · ${hE(h.condicion_alta || '')}</span>`}
-          <span class="hp-chip neutro">📍 ${hE(h.jaula ? h.jaula + ' · ' : '')}${hE(h.area || '—')}</span>
-          <span class="hp-chip neutro">⏱ ${hDur(h.ingreso_txt, act ? null : h.alta_txt)}</span>
+          <span class="hp-chip neutro">${ICON_PIN} ${hE(h.jaula ? h.jaula + ' · ' : '')}${hE(h.area || '—')}</span>
+          <span class="hp-chip neutro">${ICON_CLOCK} ${hDur(h.ingreso_txt, act ? null : h.alta_txt)}</span>
         </div>
       </div>
     </div>`;
@@ -1916,10 +1967,10 @@ function hdResumen() {
       ${it('Ingreso', hF(h.ingreso_txt))}${it('Procedencia', h.procedencia)}${it('Veterinario', h.veterinario)}
       ${it('Peso', h.peso_kg ? h.peso_kg + ' kg' : '')}${it('Jaula', h.jaula)}${it('Tel. tutor', h.cliente_telefono)}
     </div>
-    ${pend.length ? `<div class="hp-bloque"><div class="hp-bl-t">⏰ Próximos cuidados</div>${pend.map(x => `<div class="hp-bl-x">${hF(x.prog_txt)} — <b>${hE(x.producto)}</b> ${hE(x.dosis)} ${hE(x.via)}</div>`).join('')}</div>` : ''}
+    ${pend.length ? `<div class="hp-bloque"><div class="hp-bl-t">${ICON_CLOCK} Próximos cuidados</div>${pend.map(x => `<div class="hp-bl-x">${hF(x.prog_txt)} — <b>${hE(x.producto)}</b> ${hE(x.dosis)} ${hE(x.via)}</div>`).join('')}</div>` : ''}
     ${bl('Motivo de hospitalización', h.motivo)}${bl('Antecedentes y resumen de consulta', h.antecedentes)}
     ${bl('Diagnóstico', h.diagnostico)}${bl('Plan inicial', h.plan_inicial)}
-    <div class="hp-bloque ok"><div class="hp-bl-t">✔ Consentimiento</div>
+    <div class="hp-bloque ok"><div class="hp-bl-t">${ICON_CHECK} Consentimiento</div>
       <div class="hp-bl-x">Autorizado por <b>${hE(h.autorizante || '—')}</b> · registrado por ${hE(h.creado_por || '—')}</div></div>`;
 }
 
@@ -2029,10 +2080,10 @@ function hdAlta() {
   if (h.estado !== 'activa') {
     const bl = (l, v) => v ? `<div class="hp-bloque"><div class="hp-bl-t">${l}</div><div class="hp-bl-x">${hE(v)}</div></div>` : '';
     return `<div class="hp-informe">
-      <div><b>📄 Informe de hospitalización</b><small>Monitoreo, tratamientos y evolución en un solo PDF</small></div>
-      <button class="btn btn-primary" onclick="hospInforme()">⬇ Descargar informe PDF</button>
+      <div><b>${ICON_FILE}  Informe de hospitalización</b><small>Monitoreo, tratamientos y evolución en un solo PDF</small></div>
+      <button class="btn btn-primary" onclick="hospInforme()">${ICON_DL} Descargar informe PDF</button>
     </div>
-    <div class="hp-bloque ok"><div class="hp-bl-t">✔ Alta registrada</div>
+    <div class="hp-bloque ok"><div class="hp-bl-t">${ICON_CHECK} Alta registrada</div>
       <div class="hp-bl-x">${hF(h.alta_txt)} · Condición: <b>${hE(h.condicion_alta)}</b> · Autorizó: ${hE(h.alta_por || '—')} · Estancia: ${hDur(h.ingreso_txt, h.alta_txt)}</div></div>
       ${bl('Resumen de la estancia', h.resumen_alta)}${bl('Indicaciones al propietario', h.indicaciones_alta)}
       ${h.control_txt ? bl('Próximo control', fmtFecha(h.control_txt)) : ''}`;
@@ -2048,7 +2099,7 @@ function hdAlta() {
     <div class="field"><label>Próximo control (agenda una cita automáticamente)</label><input type="date" id="ha_ctrl"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-primary" id="ha_btn" onclick="hdConfirmarAlta()">✓ Confirmar alta</button>
-      <button class="btn btn-ghost" type="button" onclick="hospInforme()">📄 Ver informe actual</button>
+      <button class="btn btn-ghost" type="button" onclick="hospInforme()">${ICON_FILE}  Ver informe actual</button>
     </div>
   </div>`;
 }
@@ -2092,7 +2143,7 @@ const form = act ? `
         <div class="field"><label>Dosis</label>
   <div style="display:flex;gap:6px;">
     <input type="text" id="ht_dosis" placeholder="Ej. 5 mg/kg · 2 ml" style="flex:1;min-width:0;">
-    <button type="button" class="btn btn-ghost btn-sm" title="Calcular dosis" onclick="dcAbrir()">🧮</button>
+    <button type="button" class="btn btn-ghost btn-sm" title="Calcular dosis" onclick="dcAbrir()">${ICON_CALC}</button>
   </div>
 </div>
       </div>
@@ -2288,7 +2339,7 @@ function hospInforme() {
       <span class="cod">${x(h.codigo)}</span>
     </div>
     <div class="pac">
-      <div class="av">${String(h.especie || '').toLowerCase().includes('gat') ? '🐱' : '🐶'}</div>
+      <div class="av">${PAW_PRINT}</div>
       <div><h3>${x(h.paciente_nombre)}</h3><span>${x(h.especie)}${h.raza ? ' · ' + hE(h.raza) : ''} — Tutor: ${x(h.cliente_nombre)} · Tel. ${x(h.cliente_telefono)}</span></div>
     </div>
     <div class="kpis">

@@ -1,5 +1,9 @@
 const user = requireRole('recepcion');
 document.getElementById('logoBox').innerHTML = logoSVG() + '<span class="vc-logo-text">Vet<span>core</span></span>';
+const _svg = p => `<svg class="ico" viewBox="0 0 24 24">${p}</svg>`;
+const ICON_PRINT = _svg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>');
+const ICON_PAW   = _svg('<circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"/>');
+const ICON_ALERT = _svg('<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>');
 
 if (user) {
   document.getElementById('userName').textContent = user.nombre || 'Recepción';
@@ -54,10 +58,21 @@ async function cargarInicio() {
     api('/api/citas?pendientes=1', { headers: authHeaders() }),
   ]);
   const citasHoy = citasD.ok ? citasD.citas : [];
+  const atenciones = atD.ok ? atD.atenciones : [];
+
+  // Estados que cuentan como "en sala de espera" y "en consulta"
+  const enEspera = atenciones.filter(a => ['llegada', 'triaje', 'espera', 'llamado'].includes(a.estado));
+  const enCurso  = atenciones.filter(a => ['consulta', 'diagnostico', 'tratamiento'].includes(a.estado));
+
   document.getElementById('st-citasHoy').textContent = citasHoy.length;
   document.getElementById('st-pendientes').textContent = pendD.ok ? pendD.citas.length : 0;
-  document.getElementById('st-llegadas').textContent = atD.ok ? atD.atenciones.length : 0;
+  document.getElementById('st-llegadas').textContent = atenciones.length;
+  document.getElementById('st-espera').textContent = enEspera.length;
+  document.getElementById('st-curso').textContent = enCurso.length;
   document.getElementById('st-cobrosHoy').textContent = fmtMoney(cajaD.ok ? cajaD.total : 0);
+
+  renderColaDashboard(enEspera);
+
   document.getElementById('inicioAgendaDia').innerHTML = citasHoy.length
     ? citasHoy.map(c => `
       <div class="inicio-list-item">
@@ -154,7 +169,7 @@ async function cargarPacientes() {
   document.getElementById('tbPacientes').innerHTML = _pacientes.length
     ? _pacientes.map(p => `<tr>
         <td>
-          ${p.foto_url ? `<img src="${p.foto_url}" class="avatar-mini">` : `<span class="avatar-mini-placeholder">🐾</span>`}
+          ${p.foto_url ? `<img src="${p.foto_url}" class="avatar-mini">` : `<span class="avatar-mini-placeholder">${ICON_PAW}</span>`}
           <a href="#" onclick="abrirFichaPaciente(${p.id});return false;" style="color:var(--primary-dark);font-weight:700;text-decoration:none;">${p.nombre}</a>
         </td>
         <td>${p.cliente_nombre}</td>
@@ -182,7 +197,7 @@ async function abrirCrearPaciente() {
   document.getElementById('pa_id').value = '';
   ['pa_nombre', 'pa_especie', 'pa_raza', 'pa_fnac', 'pa_peso', 'pa_color', 'pa_microchip', 'pa_alergias', 'pa_observaciones'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('pa_sexo').value = '';
-  document.getElementById('pa_foto_preview_box').innerHTML = '<div class="pac-foto-placeholder">🐾</div>';
+  document.getElementById('pa_foto_preview_box').innerHTML = `<div class="pac-foto-placeholder">${ICON_PAW}</div>`;
   _pacienteFotoFile = null;
   abrirModal('mPaciente');
 }
@@ -204,7 +219,7 @@ async function abrirEditarPaciente(id) {
   document.getElementById('pa_observaciones').value = p.observaciones || '';
   document.getElementById('pa_foto_preview_box').innerHTML = p.foto_url
     ? `<img src="${p.foto_url}" class="pac-foto-preview">`
-    : '<div class="pac-foto-placeholder">🐾</div>';
+    : `<div class="pac-foto-placeholder">${ICON_PAW}</div>`;
   _pacienteFotoFile = null;
   abrirModal('mPaciente');
 }
@@ -439,15 +454,40 @@ async function cargarInventario() {
   _productos = d.ok ? d.productos : [];
   renderInventario();
 }
+const codigoSis = p => 'P' + String(p.id).padStart(5, '0');
+const thumb = (url, size) => url && url.includes('/upload/')
+  ? url.replace('/upload/', `/upload/w_${size},h_${size},c_fill,q_auto,f_auto/`) : url;
+const ICON_BOX = _svg('<path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="m3 8 9 5 9-5M12 13v8"/>');
+
 function renderInventario() {
-  const q = document.getElementById('inv_buscar').value.trim().toLowerCase(), fs = document.getElementById('inv_f_stock').value;
-  const lista = _productos.filter(p => (!q || [p.nombre, p.marca, p.codigo_barras].some(x => String(x || '').toLowerCase().includes(q))) && (!fs || estStock(p) === fs));
-  document.getElementById('tbInventario').innerHTML = lista.length ? lista.map(p => {
+  const q = document.getElementById('inv_buscar').value.trim().toLowerCase();
+  const fs = document.getElementById('inv_f_stock').value;
+  const lista = _productos.filter(p =>
+    (!q || [p.nombre, p.marca, p.proveedor, p.codigo_barras].some(x => String(x || '').toLowerCase().includes(q))) &&
+    (!fs || estStock(p) === fs));
+
+  document.getElementById('tbProductos').innerHTML = lista.length ? lista.map(p => {
     const e = estStock(p);
-    return `<tr><td><strong>${vcEsc(p.nombre)}</strong></td><td>${vcEsc(p.marca) || '—'}</td><td>${vcEsc(p.linea) || '—'}</td><td>${fmtMoney(p.precio_venta)}</td>
+    const estado = !p.activo ? '<span class="badge b-grey">Inactivo</span>'
+      : e === 'agotado' ? '<span class="badge b-danger">Agotado</span>'
+      : e === 'bajo' ? '<span class="badge b-accent">Stock bajo</span>'
+      : '<span class="badge b-primary">Disponible</span>';
+    return `<tr>
+      <td>${codigoSis(p)}</td>
+      <td><div class="prod-cell">
+        ${p.foto_url
+          ? `<a href="${p.foto_url}" target="_blank" title="Ver foto completa"><img src="${thumb(p.foto_url, 104)}" class="prod-foto" loading="lazy"></a>`
+          : `<span class="prod-foto-ph">${ICON_BOX}</span>`}
+        <span class="prod-nombre">${vcEsc(p.nombre)}</span>
+      </div></td>
+      <td>${vcEsc(p.marca) || '—'}</td>
+      <td>${vcEsc(p.proveedor) || '—'}</td>
+      <td>${vcEsc(p.linea) || '—'}</td>
+      <td>${fmtMoney(p.precio_venta)}</td>
       <td><span class="badge ${e === 'ok' ? 'b-primary' : e === 'bajo' ? 'b-accent' : 'b-danger'}">${p.stock}</span></td>
-      <td>${!p.activo ? '<span class="badge b-grey">Inactivo</span>' : e === 'agotado' ? '<span class="badge b-danger">Agotado</span>' : e === 'bajo' ? '<span class="badge b-accent">Stock bajo</span>' : '<span class="badge b-primary">Disponible</span>'}</td></tr>`;
-  }).join('') : '<tr class="empty-row"><td colspan="6">Sin productos</td></tr>';
+      <td>${estado}</td>
+    </tr>`;
+  }).join('') : '<tr class="empty-row"><td colspan="8">Sin productos</td></tr>';
 }
 
 const RV_PEND = v => ['pendiente', 'parcial'].includes(v.estado_pago);
@@ -491,7 +531,7 @@ function renderVentas() {
       <td><span class="badge ${estadoVentaBadge[v.estado_pago] || 'b-grey'}">${v.estado_pago}</span></td>
       <td><div style="display:flex;gap:6px;">
         <button class="btn btn-ghost btn-sm" onclick="verComprobante(${v.id})">Ver</button>
-        <button class="btn btn-ghost btn-sm" title="Imprimir" onclick="vcImprimirVenta(_ventas.find(x=>x.id===${v.id}))">🖨</button>
+        <button class="btn btn-ghost btn-sm" title="Imprimir" onclick="vcImprimirVenta(_ventas.find(x=>x.id===${v.id}))">${ICON_PRINT}</button>
         ${RV_PEND(v) ? `<button class="btn btn-primary btn-sm" onclick="abrirPago(${v.id})">Cobrar</button>` : ''}
         ${!cerrada && Number(v.pagado) === 0 ? `<button class="btn btn-danger btn-sm" onclick="anularVenta(${v.id})">Anular</button>` : ''}
       </div></td></tr>`;
@@ -598,7 +638,7 @@ function verComprobante(id) {
     ${Number(v.impuesto) ? fila('IVA', fmtMoney(v.impuesto)) : ''}${fila('Total', fmtMoney(v.total), true)}
     ${fila('Pagado', fmtMoney(v.pagado))}${saldo > 0.001 && !['anulado', 'reembolsado'].includes(v.estado_pago) ? fila('Saldo', fmtMoney(saldo)) : ''}
     <p style="margin-top:10px;color:var(--ink-soft);font-size:12.5px;">Estado: ${vcEsc(v.estado_pago)}${v.usuario_nombre ? ' · Registró: ' + vcEsc(v.usuario_nombre) : ''}${v.motivo_anulacion ? '<br>Anulación: ' + vcEsc(v.motivo_anulacion) : ''}</p>
-    <button class="btn btn-ghost btn-sm" onclick="vcImprimirVenta(_ventas.find(x=>x.id===${v.id}))">🖨 Imprimir</button>`;
+    <button class="btn btn-ghost btn-sm" onclick="vcImprimirVenta(_ventas.find(x=>x.id===${v.id}))">${ICON_PRINT} Imprimir</button>`;
   abrirModal('mComprobante');
 }
 
@@ -614,7 +654,7 @@ async function abrirFichaPaciente(id) {
   document.getElementById('fp_sub').textContent = `${_fpPacienteActivo.especie || ''} ${_fpPacienteActivo.raza ? '· ' + _fpPacienteActivo.raza : ''} — Tutor: ${_fpPacienteActivo.cliente_nombre}`;
   document.getElementById('fp_avatar').innerHTML = _fpPacienteActivo.foto_url
     ? `<img src="${_fpPacienteActivo.foto_url}" style="width:100%;height:100%;object-fit:cover;border-radius:14px;">`
-    : (_fpPacienteActivo.especie?.toLowerCase().includes('gat') ? '🐱' : '🐶');
+    : ICON_PAW;
   const p = _fpPacienteActivo;
   document.getElementById('fp_contenido').innerHTML = `
     <div class="ficha-grid">
@@ -623,7 +663,7 @@ async function abrirFichaPaciente(id) {
       <div class="ficha-item"><span class="ficha-label">Color</span><span class="ficha-val">${p.color || '—'}</span></div>
       <div class="ficha-item"><span class="ficha-label">Microchip</span><span class="ficha-val">${p.microchip || '—'}</span></div>
     </div>
-    ${p.alergias ? `<div class="ficha-dr-box"><div class="ficha-dr-label">⚠️ Alergias</div><div class="ficha-dr-txt">${p.alergias}</div></div>` : ''}
+    ${p.alergias ? `<div class="ficha-dr-box"><div class="ficha-dr-label ico-txt">${ICON_ALERT} Alergias</div><div class="ficha-dr-txt">${p.alergias}</div></div>` : ''}
   `;
   abrirModal('mFichaPaciente');
 }
@@ -658,11 +698,11 @@ function buscarGlobal(term) {
     let html = '';
     if (d.pacientes.length) {
       html += '<div class="search-results-group">Pacientes</div>';
-      html += d.pacientes.map(p => `<div class="search-result-item" onclick="cerrarBusqueda();abrirFichaPaciente(${p.id})"><span>🐾 ${p.nombre}</span><span style="color:var(--ink-soft);">${p.cliente_nombre}</span></div>`).join('');
+      html += d.pacientes.map(p => `<div class="search-result-item" onclick="cerrarBusqueda();abrirFichaPaciente(${p.id})"><span class="ico-txt">${ICON_PAW} ${p.nombre}</span><span style="color:var(--ink-soft);">${p.cliente_nombre}</span></div>`).join('');
     }
     if (d.clientes.length) {
       html += '<div class="search-results-group">Clientes</div>';
-      html += d.clientes.map(c => `<div class="search-result-item" onclick="cerrarBusqueda();ir('clientes')"><span>👤 ${c.nombre}</span><span style="color:var(--ink-soft);">${c.telefono || ''}</span></div>`).join('');
+      html += d.clientes.map(c => `<div class="search-result-item" onclick="cerrarBusqueda();ir('clientes')"><span class="ico-txt"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg> ${c.nombre}</span><span style="color:var(--ink-soft);">${c.telefono || ''}</span></div>`).join('');
     }
     if (!html) html = '<div class="search-empty">Sin resultados</div>';
     box.innerHTML = html;
@@ -761,6 +801,45 @@ async function guardarAtencion() {
   cerrarModal('mAtencion');
   cargarAtenciones();
 }
+
+
+// Nombre en el saludo
+(function(){
+  const n = String((user && user.nombre) || '').trim().split(' ')[0];
+  document.getElementById('dashNombre').textContent = (n && isNaN(n)) ? n : 'Recepción';
+})();
+
+// Cola de atención (llámala con tu lista de atenciones en espera)
+// Cola de atención: muestra 3 y permite expandir
+let _colaExpandida = false;
+let _colaLista = [];
+const COLA_LIMITE = 3;
+
+function renderColaDashboard(lista) {
+  if (lista) _colaLista = lista;
+  const box = document.getElementById('inicioCola');
+  if (!_colaLista.length) {
+    box.innerHTML = '<div class="cola-empty">Sin pacientes en espera</div>';
+    return;
+  }
+  const visibles = _colaExpandida ? _colaLista : _colaLista.slice(0, COLA_LIMITE);
+  const ocultos = _colaLista.length - COLA_LIMITE;
+
+  box.innerHTML = visibles.map((a, i) => `
+    <div class="cola-item">
+      <span class="cola-dot ${a.prioridad === 'urgente' || a.prioridad === 'emergencia' ? 'rojo' : (a.origen === 'sin_cita' ? 'naranja' : '')}"></span>
+      <div><div class="cola-name">${i + 1}. ${a.paciente_nombre || '—'}</div>
+      <div class="cola-sub">${a.origen === 'con_cita' ? 'Con cita' : 'Sin cita'}</div></div>
+    </div>`).join('')
+    + (_colaLista.length > COLA_LIMITE
+      ? `<button type="button" class="cola-toggle" onclick="toggleCola()">${_colaExpandida ? 'Ver menos ▲' : `Ver ${ocultos} más ▼`}</button>`
+      : '');
+}
+function toggleCola() {
+  _colaExpandida = !_colaExpandida;
+  renderColaDashboard();
+}
+
 // ══════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════

@@ -174,7 +174,7 @@ function vcImprimirVenta(v) {
     .nt-h button{border:0;background:none;color:var(--primary,#0f6b4f);cursor:pointer;font-size:12px}`;
     document.head.appendChild(st);
     const w = document.createElement('div'); w.className = 'nt-w';
-    w.innerHTML = `<button class="nt-b" onclick="document.getElementById('nt_panel').classList.toggle('open')" aria-label="Notificaciones">🔔</button>
+    w.innerHTML = `<button class="nt-b" onclick="document.getElementById('nt_panel').classList.toggle('open')" aria-label="Notificaciones"><svg class="ico" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
       <span class="nt-c" id="nt_count">0</span><div class="nt-p" id="nt_panel"><div id="nt_list"></div></div>`;
     bar.appendChild(w);
     document.addEventListener('click', e => { if (!w.contains(e.target)) document.getElementById('nt_panel')?.classList.remove('open'); });
